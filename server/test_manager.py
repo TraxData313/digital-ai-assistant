@@ -223,6 +223,14 @@ def main():
         check("and where it sits", echoed(e, "X-Assistant-Prefix") == "/finch")
         check("with the Host the browser used, for the room's own origin check",
               echoed(e, "Host") == "127.0.0.1:" + str(door_port), echoed(e, "Host"))
+        code, _, _, e = ask(door_port, "POST", "/finch/api/echo", me, body={},
+                            headers={"X-Assistant-Voice": "1", "Origin": "http://127.0.0.1:" + str(door_port)})
+        check("and the page's own guard headers, for the voice routes",
+              echoed(e, "X-Assistant-Voice") == "1"
+              and echoed(e, "Origin") == "http://127.0.0.1:" + str(door_port), e)
+        code, _, _, e = ask(door_port, "GET", "/finch/api/echo", headers={"X-Assistant-Who": "evil"})
+        check("while a browser nobody knows cannot say who it is",
+              echoed(e, "X-Assistant-Who") is None, echoed(e, "X-Assistant-Who"))
         code, _, _, e = ask(door_port, "POST", "/finch/api/echo", me, body={"said": "x" * 5000})
         check("a body goes through whole", code == 200 and e["method"] == "POST"
               and e["len"] == len(json.dumps({"said": "x" * 5000})), e)

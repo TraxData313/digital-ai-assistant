@@ -70,6 +70,9 @@ UPSTREAM_TIMEOUT = 900
 BODY_MAX = 64 * 1024 * 1024
 API_BODY_MAX = 1024 * 1024
 COOKIE_AGE = 365 * 24 * 3600
+# What the manager says to a room about a knock (see Handler._manager_said in
+# app.py). Whatever a browser sends under these names is thrown away.
+VOUCHING = {"x-assistant-manager", "x-assistant-peer", "x-assistant-who", "x-assistant-prefix"}
 # Headers that describe one connection rather than the message, never passed on.
 HOP = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
        "proxy-connection", "te", "trailer", "trailers", "transfer-encoding", "upgrade"}
@@ -878,7 +881,10 @@ class DoorHandler(BaseHTTPRequestHandler):
         headers = {}
         for k, v in self.headers.items():
             low = k.lower()
-            if low in HOP or low.startswith("x-assistant-") or low == "content-length":
+            # Only the manager's own words are taken off: a browser may not
+            # say who it is. The page's own headers (X-Assistant-Voice, the
+            # voice routes' guard) go through untouched.
+            if low in HOP or low in VOUCHING or low == "content-length":
                 continue
             headers[k] = v
         if body or self.headers.get("Content-Length") is not None:
