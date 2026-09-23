@@ -65,6 +65,30 @@ python -m server.app         # or the room in a console, saying everything
 The room answers on `http://localhost:<port>`. It refuses to start without a
 home chosen, and refuses to share its port with another room.
 
+## More than one assistant on a machine
+
+The assistant's name at the top of the page opens a list of every assistant
+this install knows, awake or asleep. Choosing one opens its room in a new tab,
+waking it first if it is asleep; **+ New assistant** asks for a name and a
+folder, makes the home there, and opens it. Each runs as its own room on its
+own port under its own icon, with its own store; they share only the code and
+the keys in `server/passwords.py`. A new one thinks through the same model as
+the room that made it until its own Settings say otherwise. Write its Spark
+(`data\spark.md` in its folder) before talking to it much.
+
+The list is `homes.json` beside the code, per machine and never committed.
+Making and waking rooms is for the owner at the desk; from a phone the list
+says so. `python -m server.homes` prints it.
+
+## Its face
+
+Tapping the portrait opens the portrait and the room's background. A picture
+uploaded there is kept in the home's `artwork/portraits/` and the face is
+drawn from it: the round portrait, the icons a phone keeps, and both icons in
+the corner of the screen (the corner one changes the next time it starts). The
+face the home had before is kept file for file in
+`artwork/portraits/original/`, and choosing it gives exactly that back.
+
 ## Backups
 
 - Every local copy lives in the home's `all_backups/`, which git never sees:
@@ -90,7 +114,8 @@ Workshop or Nexus Mods items read their items from `data/comments.json`.
 ## Tests
 
 The benches run from the code folder with a made-up identity and never touch
-a home:
+a home -- a process started as `server.test_*` ignores `home.json`, and so
+does everything it starts, unless `ASSISTANT_HOME` names a home on purpose:
 
 ```
 python -m server.test_projects %TEMP%\scratch.db

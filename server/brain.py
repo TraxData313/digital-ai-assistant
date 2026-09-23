@@ -490,6 +490,13 @@ def find_claude() -> str:
 
 
 def read_spark() -> str:
+    # A real home always has its own, written by setup. The code folder's
+    # made-up identity has none on a fresh checkout; it reads the starter
+    # every new home is given, filled with its names.
+    if not SPARK_PATH.exists() and not home.is_real():
+        kit = home.CODE / "server" / "new_home" / "spark.md"
+        return (kit.read_text(encoding="utf-8").replace("{{today}}", "2026-01-01")
+                .replace("{{name}}", home.NAME).replace("{{owner}}", home.OWNER_NAME))
     return SPARK_PATH.read_text(encoding="utf-8")
 
 

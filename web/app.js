@@ -2384,8 +2384,7 @@ function wallpaperBusy() {
   return wallpaperUploading || !!(input && input.files && input.files.length);
 }
 
-function devWallpaper() {
-  const wp = (state && state.wallpaper) || {};
+function devWallpaper(wp = (state && state.wallpaper) || {}) {
   const current = wp.current || null;
   const items = Array.isArray(wp.items) ? wp.items : [];
   const maxBytes = Number(wp.max_bytes) || WALLPAPER_MAX_BYTES;
@@ -2409,8 +2408,9 @@ function devWallpaper() {
   return html;
 }
 
-function wireWallpapers() {
-  const input = $("wallpaper-file"), upload = $("wallpaper-upload"), note = $("wallpaper-note");
+function wireWallpapers(root = MAIN, rerender = renderDev) {
+  const input = root.querySelector("#wallpaper-file"), upload = root.querySelector("#wallpaper-upload"),
+    note = root.querySelector("#wallpaper-note");
   if (!input || !upload || !note) return;
   const maxBytes = ((state || {}).wallpaper || {}).max_bytes || WALLPAPER_MAX_BYTES;
   const say = (text, bad) => {
@@ -2439,17 +2439,17 @@ function wireWallpapers() {
       WALLPAPER_NOTICE = {text: "Uploaded and now using " + ((got.current || {}).name || file.name), bad: false};
       input.value = "";
       wallpaperUploading = false;
-      renderDev();
+      rerender();
     } catch (e) {
       wallpaperUploading = false;
       upload.disabled = false;
       say(String(e.message || e), true);
     }
   };
-  for (const button of MAIN.querySelectorAll(".wallpaper-option")) button.onclick = async () => {
+  for (const button of root.querySelectorAll(".wallpaper-option")) button.onclick = async () => {
     if (wallpaperUploading || button.getAttribute("aria-checked") === "true") return;
     wallpaperUploading = true;
-    for (const b of MAIN.querySelectorAll(".wallpaper-option")) b.disabled = true;
+    for (const b of root.querySelectorAll(".wallpaper-option")) b.disabled = true;
     say("changing the room background…", false);
     try {
       const got = await post("/api/wallpapers/choose", {id: button.dataset.wallpaper});
@@ -2457,10 +2457,10 @@ function wireWallpapers() {
       applyWallpaper(got);
       WALLPAPER_NOTICE = {text: "Room background changed to " + ((got.current || {}).name || "the selected image"), bad: false};
       wallpaperUploading = false;
-      renderDev();
+      rerender();
     } catch (e) {
       wallpaperUploading = false;
-      for (const b of MAIN.querySelectorAll(".wallpaper-option")) b.disabled = false;
+      for (const b of root.querySelectorAll(".wallpaper-option")) b.disabled = false;
       say(String(e.message || e), true);
     }
   };
@@ -4640,3 +4640,301 @@ window.assistantVoiceRows = rows => {
   if (bottom) MAIN.scrollTop = MAIN.scrollHeight;
 };
 window.assistantVoiceRefresh = async () => { absorbState(await getJson('/api/state')); render(); };
+
+// --- the face, and the other assistants on this machine --------------------
+// The portrait opens a dialog for the face and the room's background; the
+// name opens the list of assistants this install knows, with a way to make
+// another. Making and waking a room is done at the desk; from anywhere else
+// the room says so in words rather than hiding the button.
+
+const FACE_DIALOG = $("face-dialog");
+const NEW_DIALOG = $("new-assistant-dialog");
+const PICK = $("assistant-pick");
+const MENU = $("assistant-menu");
+let portraitState = null;
+let faceWallpaper = null;    // the backgrounds, if the dialog opened before the room's state had
+let portraitBusy = false;
+let PORTRAIT_NOTICE = null;
+let homesList = null;
+
+function wearPortrait(url) {
+  if (url) $("portrait").src = url;
+  const icon = document.querySelector('link[rel="icon"]');
+  if (icon) icon.href = "/artwork/icon.ico?v=" + Date.now();
+}
+
+function faceHtml() {
+  const ps = portraitState || {};
+  const items = Array.isArray(ps.items) ? ps.items : [];
+  const note = PORTRAIT_NOTICE || {};
+  const maxBytes = Number(ps.max_bytes) || WALLPAPER_MAX_BYTES;
+  let html = `<h2 id="face-title">Portrait and background</h2>`;
+  html += `<section class="face-part"><h3>Portrait</h3>` +
+    `<p class="quiet">The face ${esc(MY_NAME)} wears here, on a phone's home screen and in the corner of the screen. ` +
+    `New pictures are kept in ${esc(MY_NAME)}'s artwork folder; the original face stays available.</p>` +
+    `<div class="wallpaper-upload"><input id="portrait-file" type="file" accept="image/png,image/jpeg,image/gif,image/webp">` +
+    `<button id="portrait-upload" type="button" disabled>upload and use it</button></div>` +
+    `<p id="portrait-note" class="wallpaper-note${note.bad ? " bad" : ""}" role="status">` +
+    esc(note.text || "PNG, JPEG, GIF or WEBP · up to " + Math.round(maxBytes / 1024 / 1024) +
+        " MB · the icon in the corner changes the next time it starts") + `</p>`;
+  html += items.length
+    ? `<div class="portrait-grid" role="radiogroup" aria-label="Portraits">` + items.map((item) =>
+      `<button class="wallpaper-option portrait-option" type="button" role="radio" data-portrait="${esc(item.id)}" ` +
+      `aria-checked="${item.id === ps.selected ? "true" : "false"}" title="Wear ${esc(item.name)}">` +
+      `<img src="${esc(item.url)}" alt=""><span class="wallpaper-name">${esc(item.name)}</span></button>`).join("") + `</div>`
+    : `<p class="bad">The portraits could not be read just now.</p>`;
+  const wp = (state && state.wallpaper) || faceWallpaper || {};
+  html += `</section><section class="face-part"><h3>Background</h3><div id="face-wallpaper">${devWallpaper(wp)}</div></section>`;
+  html += `<div class="dialog-actions"><button type="button" class="dialog-close">close</button></div>`;
+  return html;
+}
+
+function renderFace() {
+  FACE_DIALOG.innerHTML = faceHtml();
+  FACE_DIALOG.querySelector(".dialog-close").onclick = () => FACE_DIALOG.close();
+  wireWallpapers(FACE_DIALOG.querySelector("#face-wallpaper"), renderFace);
+  wirePortraits();
+}
+
+function wirePortraits() {
+  const root = FACE_DIALOG;
+  const input = root.querySelector("#portrait-file"), upload = root.querySelector("#portrait-upload"),
+    note = root.querySelector("#portrait-note");
+  if (!input || !upload || !note) return;
+  const maxBytes = (portraitState || {}).max_bytes || WALLPAPER_MAX_BYTES;
+  const say = (text, bad) => {
+    note.textContent = text;
+    note.classList.toggle("bad", !!bad);
+    PORTRAIT_NOTICE = {text, bad: !!bad};
+  };
+  const wore = (got, text) => {
+    portraitState = got;
+    wearPortrait((got.current || {}).url);
+    PORTRAIT_NOTICE = {text, bad: false};
+    portraitBusy = false;
+    renderFace();
+  };
+  input.onchange = () => {
+    const problem = wallpaperFileProblem(input.files && input.files[0], maxBytes);
+    upload.disabled = !!problem || portraitBusy;
+    if (input.files && input.files[0]) say(problem || (input.files[0].name + " is ready to upload"), !!problem);
+  };
+  upload.onclick = async () => {
+    const file = input.files && input.files[0];
+    const problem = wallpaperFileProblem(file, maxBytes);
+    if (problem) { say(problem, true); return; }
+    portraitBusy = true;
+    upload.disabled = true;
+    say("drawing the new face…", false);
+    try {
+      const data = await readAsDataURL(file);
+      wore(await post("/api/portraits/upload", {name: file.name, data}), "Uploaded, and wearing " + (file.name || "it") + " now");
+    } catch (e) {
+      portraitBusy = false;
+      upload.disabled = false;
+      say(String(e.message || e), true);
+    }
+  };
+  for (const button of root.querySelectorAll(".portrait-option")) button.onclick = async () => {
+    if (portraitBusy || button.getAttribute("aria-checked") === "true") return;
+    portraitBusy = true;
+    for (const b of root.querySelectorAll(".portrait-option")) b.disabled = true;
+    say("changing the portrait…", false);
+    try {
+      const name = button.querySelector(".wallpaper-name").textContent;
+      wore(await post("/api/portraits/choose", {id: button.dataset.portrait}), "Wearing " + name + " now");
+    } catch (e) {
+      portraitBusy = false;
+      for (const b of root.querySelectorAll(".portrait-option")) b.disabled = false;
+      say(String(e.message || e), true);
+    }
+  };
+}
+
+async function openFace() {
+  PORTRAIT_NOTICE = null;
+  try { portraitState = await getJson("/api/portraits"); } catch (e) { portraitState = null; }
+  if (!state || !state.wallpaper) {
+    try { faceWallpaper = await getJson("/api/wallpapers"); } catch (e) { faceWallpaper = null; }
+  }
+  renderFace();
+  if (!FACE_DIALOG.open) FACE_DIALOG.showModal();
+}
+
+// --- the list under the name ---
+
+function closeAssistantMenu() {
+  MENU.hidden = true;
+  PICK.setAttribute("aria-expanded", "false");
+}
+
+function assistantMenuHtml(list, problem) {
+  if (problem) return `<p class="assistant-note">${esc(problem)}</p>`;
+  const homes = (list && list.homes) || [];
+  return homes.map((h) => {
+    const where = h.current ? "this room" : (h.awake ? "awake" : "asleep — opening wakes it");
+    return `<button type="button" role="menuitemradio" aria-checked="${h.current ? "true" : "false"}" ` +
+      `class="assistant-item${h.current ? " current" : ""}" data-home="${esc(h.home)}">` +
+      `<b>${esc(h.title || h.name)}</b><span class="quiet">${esc(where)} · port ${esc(h.port)}</span></button>`;
+  }).join("") +
+    `<button type="button" role="menuitem" class="assistant-item assistant-new" id="assistant-new">+ New assistant…</button>`;
+}
+
+// A tab is opened inside the click itself, before the room is asked:
+// a tab opened after waiting is a popup, and browsers block those.
+function waitingTab(text) {
+  const tab = window.open("", "_blank");
+  if (tab) {
+    tab.document.title = text;
+    tab.document.body.style.cssText = "background:#16130f;color:#bbb;font:18px system-ui,sans-serif;padding:28px";
+    tab.document.body.textContent = text;
+  }
+  return tab;
+}
+
+function sendTab(tab, url, whereToSay, name) {
+  if (tab && !tab.closed) { tab.location.href = url; return true; }
+  whereToSay.innerHTML = `<p class="assistant-note">The browser held the new tab back. ` +
+    `<a href="${esc(url)}" target="_blank" rel="opener">Open ${esc(name)}'s room</a></p>`;
+  return false;
+}
+
+async function switchTo(folder, name) {
+  const tab = waitingTab("waking " + name + "…");
+  MENU.innerHTML = `<p class="assistant-note">waking ${esc(name)}… the first start can take half a minute</p>`;
+  try {
+    const got = await post("/api/homes/open", {home: folder});
+    if (sendTab(tab, got.url, MENU, name)) closeAssistantMenu();
+  } catch (e) {
+    if (tab) tab.close();
+    MENU.innerHTML = `<p class="assistant-note bad">${esc(String(e.message || e))}</p>`;
+  }
+}
+
+async function openAssistantMenu() {
+  MENU.innerHTML = `<p class="assistant-note">looking…</p>`;
+  MENU.hidden = false;
+  PICK.setAttribute("aria-expanded", "true");
+  let list = null, problem = "";
+  try {
+    const r = await fetch("/api/homes", {cache: "no-store"});
+    const data = await r.json();
+    if (r.ok) list = data; else problem = data.error || "the list is not available here";
+  } catch (e) {
+    problem = String(e.message || e);
+  }
+  homesList = list;
+  MENU.innerHTML = assistantMenuHtml(list, problem);
+  for (const b of MENU.querySelectorAll(".assistant-item[data-home]")) b.onclick = () => {
+    if (b.classList.contains("current")) { closeAssistantMenu(); return; }
+    switchTo(b.dataset.home, b.querySelector("b").textContent);
+  };
+  const add = MENU.querySelector("#assistant-new");
+  if (add) add.onclick = () => { closeAssistantMenu(); openNewAssistant(); };
+}
+
+// --- a new one ---
+
+// A name as a folder name: what Windows will not take in a path is dropped.
+function folderFor(parent, name) {
+  const safe = name.replace(/[<>:"\/\\|?*\x00-\x1f]/g, "").trim().replace(/[. ]+$/, "");
+  if (!parent || !safe) return parent || "";
+  return parent.replace(/[\\\/]+$/, "") + "\\" + safe;
+}
+
+function newAssistantHtml() {
+  return `<h2 id="new-assistant-title">A new assistant</h2>` +
+    `<p class="quiet">An empty folder becomes its home: its memory, its Spark, its pictures and its backups, ` +
+    `kept apart from ${esc(MY_NAME)}'s. It opens in a new tab on its own port, and thinks through the same model ` +
+    `as ${esc(MY_NAME)} until you change that in its Settings.</p>` +
+    `<label class="field">Name<input id="na-name" type="text" maxlength="40" autocomplete="off" spellcheck="false"></label>` +
+    `<label class="field">Folder<span class="field-row"><input id="na-folder" type="text" autocomplete="off" spellcheck="false">` +
+    `<button id="na-browse" type="button">Browse…</button></span></label>` +
+    `<p id="na-note" class="wallpaper-note" role="status">Before talking to it much, write its Spark: ` +
+    `data\\spark.md in its folder, the text it reads as itself.</p>` +
+    `<div class="dialog-actions"><button id="na-create" type="button" disabled>Create and open</button>` +
+    `<button type="button" class="dialog-close">cancel</button></div>`;
+}
+
+async function openNewAssistant() {
+  if (!homesList) {
+    try {
+      const r = await fetch("/api/homes", {cache: "no-store"});
+      if (r.ok) homesList = await r.json();
+    } catch (e) { /* the folder box starts empty */ }
+  }
+  NEW_DIALOG.innerHTML = newAssistantHtml();
+  const nameEl = NEW_DIALOG.querySelector("#na-name"), folderEl = NEW_DIALOG.querySelector("#na-folder");
+  const create = NEW_DIALOG.querySelector("#na-create"), browse = NEW_DIALOG.querySelector("#na-browse");
+  const note = NEW_DIALOG.querySelector("#na-note");
+  const parentDefault = (homesList && homesList.default_parent) || "";
+  let parent = parentDefault, typed = false, busy = false;
+  const say = (text, bad) => { note.textContent = text; note.classList.toggle("bad", !!bad); };
+  const ready = () => { create.disabled = busy || !nameEl.value.trim() || !folderEl.value.trim(); };
+  nameEl.oninput = () => {
+    if (!typed) folderEl.value = folderFor(parent, nameEl.value);
+    ready();
+  };
+  folderEl.oninput = () => { typed = true; ready(); };
+  browse.onclick = async () => {
+    say("A folder dialog is open on this screen. Choose where it should live.", false);
+    browse.disabled = true;
+    try {
+      const got = await post("/api/homes/browse", {from: parent});
+      if (got.folder) {
+        const leaf = got.folder.split(/[\\\/]/).pop() || "";
+        const name = nameEl.value.trim();
+        // A folder already named for it is the folder; anywhere else is the
+        // place it goes into.
+        if (name && leaf.toLowerCase() === folderFor("", name).toLowerCase()) {
+          folderEl.value = got.folder;
+          typed = true;
+        } else {
+          parent = got.folder;
+          typed = false;
+          folderEl.value = folderFor(parent, name) || parent;
+        }
+      }
+      say("It will live in the folder shown. An empty or new folder, please.", false);
+    } catch (e) {
+      say(String(e.message || e), true);
+    }
+    browse.disabled = false;
+    ready();
+  };
+  create.onclick = async () => {
+    const name = nameEl.value.trim(), folder = folderEl.value.trim();
+    if (!name || !folder || busy) return;
+    busy = true;
+    ready();
+    const tab = waitingTab("making " + name + "…");
+    say("Making " + name + " and waking it. The first start can take half a minute.", false);
+    try {
+      const got = await post("/api/homes/new", {name, folder});
+      homesList = null;
+      if (sendTab(tab, got.url, note, name)) NEW_DIALOG.close();
+    } catch (e) {
+      if (tab) tab.close();
+      busy = false;
+      ready();
+      say(String(e.message || e), true);
+    }
+  };
+  NEW_DIALOG.querySelector(".dialog-close").onclick = () => NEW_DIALOG.close();
+  if (!NEW_DIALOG.open) NEW_DIALOG.showModal();
+  nameEl.focus();
+}
+
+// A click on the dim around a dialog closes it, like Escape does.
+for (const d of [FACE_DIALOG, NEW_DIALOG]) d.addEventListener("click", (e) => { if (e.target === d) d.close(); });
+$("portrait-button").onclick = openFace;
+PICK.onclick = (e) => {
+  e.stopPropagation();
+  if (MENU.hidden) openAssistantMenu(); else closeAssistantMenu();
+};
+document.addEventListener("click", (e) => {
+  if (!MENU.hidden && !e.target.closest(".assistant-switch")) closeAssistantMenu();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !MENU.hidden) closeAssistantMenu();
+});

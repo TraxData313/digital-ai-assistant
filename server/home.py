@@ -20,6 +20,9 @@ A home looks like this:
 Which home, in this order:
 
     ASSISTANT_HOME      an environment variable, for a side room or a test
+    a bench             `python -m server.test_*` never follows home.json:
+                        it runs on the code folder unless ASSISTANT_HOME
+                        names a home on purpose, and so do its children
     home.json           beside the code, written by `python -m server.setup`
     the code folder     the old single-folder layout; only tests run this way
 
@@ -31,16 +34,29 @@ A real home always has its own, written by setup.
 import json
 import os
 import re
+import sys
 from pathlib import Path
 
 CODE = Path(__file__).resolve().parent.parent
 POINTER = CODE / "home.json"
 
 
+def _under_test() -> bool:
+    """Whether this process is a bench: `python -m server.test_x` runs with
+    the test file as argv[0]. Once an install has chosen a real home, a bench
+    that followed home.json would write into that home and bind its port."""
+    return Path(sys.argv[0] if sys.argv else "").name.startswith("test_")
+
+
 def _resolve() -> Path:
     env = (os.environ.get("ASSISTANT_HOME") or "").strip()
     if env:
         return Path(env).expanduser().resolve()
+    if _under_test():
+        # Said in the environment too, so anything the bench starts -- a
+        # room, a tray, a dream run -- lands in the same place.
+        os.environ["ASSISTANT_HOME"] = str(CODE)
+        return CODE
     try:
         chosen = json.loads(POINTER.read_text(encoding="utf-8")).get("home")
         if chosen:

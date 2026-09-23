@@ -10,6 +10,9 @@ from pathlib import Path
 from server import db, dream
 
 SCRATCH = Path(sys.argv[1] if len(sys.argv) > 1 else "data/door-test.db")
+if not Path("data/store.db").is_file():
+    print("skipped: this bench leans on a copy of a lived-in store at data/store.db")
+    sys.exit(0)
 shutil.copyfile("data/store.db", SCRATCH)
 db.DB_PATH = SCRATCH.resolve()
 
@@ -19,6 +22,12 @@ say = lambda t, k="plain", d=None: said.append((k, str(t)))
 
 night = "2026-08-23"
 day = dream.the_day(conn, night)
+# It needs a night with a day behind it and essences older than that day;
+# a fresh store has neither, and the checks below would be about nothing.
+if not day["rows"] or not conn.execute(
+        "SELECT 1 FROM rows WHERE kind='essence' AND id < 700").fetchone():
+    print("skipped: data/store.db has no lived-in night of " + night + " to lean on")
+    sys.exit(0)
 day_ids = {r["id"] for r in day["rows"]}
 read = {r["id"] for r in day["rows"] if r["kind"] == "essence"}
 standing = set(dream.standing_ids(conn))

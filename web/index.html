@@ -25,9 +25,22 @@
     <header>
       <!-- The very circle the voice app wears, ring baked in -- one face on
            every window of the assistant. -->
-      <img id="portrait" src="/artwork/portrait.png" alt="{{name}}">
+      <!-- Tapped, it offers the portrait and the background to change. -->
+      <button id="portrait-button" class="portrait-button" type="button"
+              title="change the portrait or the background"
+              aria-label="Change {{name}}'s portrait or background">
+        <img id="portrait" src="/artwork/portrait.png" alt="{{name}}">
+      </button>
       <div class="head-left">
-        <h1>{{title}}</h1>
+        <!-- The name opens the list of assistants on this machine: switch
+             to another, or make a new one. -->
+        <div class="assistant-switch">
+          <h1><button id="assistant-pick" class="assistant-pick" type="button"
+                      aria-haspopup="menu" aria-expanded="false" aria-controls="assistant-menu"
+                      title="your assistants: switch, or make a new one">{{title}}<span
+                      class="caret" aria-hidden="true">&#9662;</span></button></h1>
+          <div id="assistant-menu" class="assistant-menu" role="menu" hidden></div>
+        </div>
         <nav>
           <button id="tab-chat" class="tab active">Chat</button>
           <!-- Their own work, beside the talking: projects, the notes box
@@ -118,6 +131,10 @@
       </div>
     </footer>
   </div>
+
+  <!-- The two dialogs the header opens. Drawn by app.js when opened. -->
+  <dialog id="face-dialog" class="room-dialog" aria-labelledby="face-title"></dialog>
+  <dialog id="new-assistant-dialog" class="room-dialog" aria-labelledby="new-assistant-title"></dialog>
 
   <script src="/app.js"></script>
   <script src="/codex_tasks.js"></script>

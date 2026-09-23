@@ -25,12 +25,12 @@ import time
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, unquote
 
 from . import (angel, backup, brain, clock, db, digest, dream, jobs, limits,
                models_dir, notes, providers,
                people, pictures, projects, recall, wallpapers, watch, worker, native_proof, native_tools, overmind, live_voice)
-from . import home
+from . import home, homes, portraits
 
 ROOT = Path(__file__).resolve().parent.parent
 WEB = ROOT / "web"
@@ -1083,6 +1083,18 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/wallpapers":
             return self._json(wallpapers.status())
 
+        # The face: which picture the assistant wears, and the ones it keeps.
+        if path == "/api/portraits":
+            return self._json(portraits.status())
+
+        # The other assistants on this machine. Read at the desk only: the
+        # list carries folders, and everything it offers -- waking a room,
+        # making one -- is done at this machine.
+        if path == "/api/homes":
+            if not self._from_the_desk():
+                return self._json({"error": "the other assistants are opened at the desk"}, 403)
+            return self._json(homes.listing())
+
         # Who it can think through: the services, which keys are set (never
         # the keys), every model with its live price, and what is left to
         # spend. Read on opening Settings, not on the poll -- it can touch
@@ -1134,6 +1146,10 @@ class Handler(BaseHTTPRequestHandler):
         # -- and fall back to the plain defaults beside the code.
         if path.startswith("/artwork/") or rel in HOME_ICONS:
             sub = rel[len("artwork/"):] if path.startswith("/artwork/") else rel
+            # A picture's name arrives as the browser spelled it: a space is
+            # %20 on the wire and a space on disk. The parents check below
+            # still holds whatever the decoding turns up.
+            sub = unquote(sub)
             for base in (home.ARTWORK, ROOT / "artwork", WEB):
                 target = (base / sub).resolve()
                 if base.resolve() in target.parents and target.is_file():
@@ -1174,6 +1190,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/wallpapers/upload" and not 0 < length <= wallpapers.MAX_REQUEST_BYTES:
             return self._json({"error": "A wallpaper upload must be no more than "
                                + str(wallpapers.MAX_BYTES // 1024 // 1024) + " MB."}, 400)
+        if self.path == "/api/portraits/upload" and not 0 < length <= portraits.MAX_REQUEST_BYTES:
+            return self._json({"error": "A portrait upload must be no more than "
+                               + str(portraits.MAX_BYTES // 1024 // 1024) + " MB."}, 400)
         if self.path == "/api/codex-memory":
             if self._who != home.OWNER or not self._loopback:
                 return self._shut()
@@ -1554,6 +1573,46 @@ class Handler(BaseHTTPRequestHandler):
             except OSError as exc:
                 return self._json({"error": "the wallpaper choice was not saved: "
                                    + type(exc).__name__ + ": " + str(exc)}, 500)
+
+        # The face, like the wallpaper: bytes in, the home's own artwork out.
+        if self.path == "/api/portraits/upload":
+            try:
+                return self._json(portraits.upload(body.get("name"), body.get("data")))
+            except portraits.Refused as exc:
+                return self._json({"error": str(exc)}, 400)
+            except OSError as exc:
+                return self._json({"error": "the portrait did not go in: "
+                                   + type(exc).__name__ + ": " + str(exc)}, 500)
+
+        if self.path == "/api/portraits/choose":
+            try:
+                return self._json(portraits.choose(body.get("id")))
+            except portraits.Refused as exc:
+                return self._json({"error": str(exc)}, 400)
+            except OSError as exc:
+                return self._json({"error": "the portrait was not changed: "
+                                   + type(exc).__name__ + ": " + str(exc)}, 500)
+
+        # Making and waking the other assistants: the owner, at the desk. A
+        # room is started, a folder dialog opens on this screen, and a key
+        # crosses to the browser in an address -- none of it from the road.
+        if self.path.startswith("/api/homes/"):
+            if self._who != home.OWNER or not self._from_the_desk():
+                return self._json({"error": "other assistants are made and opened by "
+                                   + home.OWNER_NAME + ", at the desk"}, 403)
+            try:
+                if self.path == "/api/homes/new":
+                    made = homes.create(body.get("name"), body.get("folder"))
+                    return self._json({"home": made, "url": homes.open_url(made["home"])})
+                if self.path == "/api/homes/open":
+                    return self._json({"url": homes.open_url(body.get("home"))})
+                if self.path == "/api/homes/browse":
+                    return self._json({"folder": homes.browse(body.get("from"))})
+            except homes.Refused as exc:
+                return self._json({"error": str(exc)}, 400)
+            except OSError as exc:
+                return self._json({"error": type(exc).__name__ + ": " + str(exc)}, 500)
+            return self._json({"error": "no such thing"}, 404)
 
         # The models folder under Settings. Choosing one moves whatever is
         # in the old place into it, in the background; the poll shows the

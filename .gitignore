@@ -19,3 +19,7 @@ data/
 data_backups/
 all_backups/
 logs/
+
+# The other assistants this install knows -- folders on this machine.
+homes.json
+homes.tmp

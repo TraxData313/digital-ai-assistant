@@ -2,6 +2,7 @@
 import http.client
 from http.server import ThreadingHTTPServer
 import json
+import os
 import tempfile
 import threading
 import unittest
@@ -98,7 +99,9 @@ class DoorTests(unittest.TestCase):
         key = root / "data/people/sam.token"
         key.parent.mkdir(parents=True)
         key.write_text("synthetic-hook")
-        with patch.object(worker_hook, "__file__", str(root / "server/worker_hook.py")):
+        # The hook's own fallback is under test, so the home a bench names
+        # for itself in the environment is set aside for this check.
+        with patch.object(worker_hook, "__file__", str(root / "server/worker_hook.py")),                 patch.dict(os.environ, {"ASSISTANT_HOME": ""}):
             self.assertEqual(worker_hook._room_headers("http://127.0.0.1:8787/api/worker/knock")["Cookie"], "ada_who=synthetic-hook")
             self.assertNotIn("Cookie", worker_hook._room_headers("https://example.com/api/worker/knock"))
 

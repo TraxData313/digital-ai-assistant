@@ -1226,3 +1226,80 @@ a.res-val:hover { color: var(--ink); }
   #voice-tools button { width:36px; height:36px; }
   #voice-tools { height:44px; }
 }
+
+/* --- the portrait and the name open things ----------------------------------
+   The portrait opens the face and background; the name opens the list of
+   assistants on this machine. Both keep their look -- the only new mark is
+   the small caret after the name. */
+.portrait-button {
+  flex: none; padding: 0; border: 0; background: none; cursor: pointer;
+  border-radius: 50%; line-height: 0;
+}
+.portrait-button:focus-visible { outline: 2px solid var(--self); outline-offset: 3px; }
+.assistant-switch { position: relative; }
+.assistant-pick {
+  font: inherit; color: inherit; letter-spacing: inherit; background: none;
+  border: 0; padding: 0; cursor: pointer; text-align: left;
+}
+.assistant-pick .caret { font-size: .8em; margin-left: 8px; opacity: .55; letter-spacing: 0; }
+.assistant-pick:hover .caret, .assistant-pick[aria-expanded="true"] .caret { opacity: 1; }
+.assistant-pick:focus-visible { outline: 2px solid var(--self); outline-offset: 3px; border-radius: 4px; }
+.assistant-menu {
+  position: absolute; top: calc(100% + 6px); left: -8px; z-index: 60;
+  min-width: 290px; max-width: min(440px, 92vw); padding: 6px;
+  border-radius: 12px; border: 1px solid var(--line); background: #1c1916;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .5);
+}
+.assistant-item {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  width: 100%; text-align: left; padding: 9px 11px; border: 0; border-radius: 8px;
+  background: none; color: var(--ink); font: inherit; font-size: 16.5px; cursor: pointer;
+}
+.assistant-item:hover, .assistant-item:focus-visible { background: rgba(255, 255, 255, .07); outline: none; }
+.assistant-item b { font-weight: 600; }
+.assistant-item.current b { color: var(--self); }
+.assistant-item .quiet { font-size: 14px; color: var(--dim); }
+.assistant-new { margin-top: 4px; border-top: 1px solid var(--line); border-radius: 0 0 8px 8px; color: var(--self); }
+.assistant-note { margin: 8px 11px; font-size: 15.5px; color: var(--dim); }
+.assistant-note.bad { color: var(--bad); }
+.assistant-note a { color: var(--self); }
+
+/* The dialogs: one card over a dimmed room, text a size up from Settings. */
+.room-dialog {
+  width: min(780px, 94vw); max-height: 88vh; overflow: auto; padding: 22px 26px;
+  border-radius: 14px; border: 1px solid var(--line); background: #1c1916;
+  color: var(--ink); font-size: 16.5px;
+}
+.room-dialog::backdrop { background: rgba(0, 0, 0, .6); }
+.room-dialog h2 { font-size: 20px; margin: 0 0 10px; color: var(--self); letter-spacing: .06em; font-weight: 600; }
+.room-dialog h3 { font-size: 17px; margin: 18px 0 6px; font-weight: 600; }
+.room-dialog .quiet { color: var(--dim); font-size: 15.5px; margin: 4px 0 8px; }
+.room-dialog .bad { color: var(--bad); }
+.room-dialog .wallpaper-note { font-size: 14.5px; }
+.room-dialog .wallpaper-upload button { font-size: 14.5px; }
+.room-dialog .field { display: flex; flex-direction: column; gap: 5px; margin: 14px 0; font-size: 15.5px; color: var(--dim); }
+.room-dialog .field-row { display: flex; gap: 8px; }
+.room-dialog input[type="text"] {
+  flex: 1; min-width: 0; font: inherit; font-size: 17px; padding: 8px 11px;
+  border-radius: 8px; border: 1px solid var(--line); background: rgba(0, 0, 0, .28); color: var(--ink);
+}
+.room-dialog input[type="text"]:focus { outline: none; border-color: var(--self); }
+.room-dialog .field-row button, .dialog-actions button {
+  font: inherit; font-size: 15.5px; padding: 7px 16px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--line); background: rgba(255, 255, 255, .06); color: var(--ink);
+}
+.room-dialog .field-row button:hover:not(:disabled), .dialog-actions button:hover:not(:disabled) { border-color: var(--self); }
+.room-dialog button:disabled { opacity: .55; cursor: default; }
+.dialog-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
+#na-create:not(:disabled) { border-color: var(--self); color: var(--self); }
+.portrait-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 10px; }
+.portrait-option { text-align: center; }
+.portrait-option img {
+  display: block; width: 100%; aspect-ratio: 1; object-fit: cover;
+  border-radius: 50%; background: rgba(0, 0, 0, .22);
+}
+@media (max-width: 700px) {
+  .room-dialog { padding: 16px 16px; }
+  .assistant-menu { left: 0; }
+  .portrait-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}

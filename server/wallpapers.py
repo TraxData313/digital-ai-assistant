@@ -163,25 +163,25 @@ def choose(identifier) -> dict:
         return status()
 
 
-def _decode(data) -> bytes:
+def _decode(data, noun="wallpaper") -> bytes:
     if not isinstance(data, str):
-        raise Refused("the wallpaper did not arrive as image data")
+        raise Refused("the " + noun + " did not arrive as image data")
     # The browser's FileReader gives a data URL; accepting bare base64 also
     # keeps this endpoint simple to exercise without a browser.
     raw = data.split(",", 1)[-1] if data.startswith("data:") else data
     try:
         return base64.b64decode(raw, validate=True)
     except (ValueError, TypeError) as exc:
-        raise Refused("the wallpaper did not arrive whole") from exc
+        raise Refused("the " + noun + " did not arrive whole") from exc
 
 
-def _validate(data: bytes, name) -> tuple[str, tuple[int, int]]:
+def _validate(data: bytes, name, noun="wallpaper") -> tuple[str, tuple[int, int]]:
     label = _safe_filename(name, "") or "that file"
     if not data:
-        raise Refused("the wallpaper is empty")
+        raise Refused("the " + noun + " is empty")
     if len(data) > MAX_BYTES:
         raise Refused(label + " is " + str(round(len(data) / 1024 / 1024, 1))
-                      + " MB; wallpapers may be at most "
+                      + " MB; " + noun + "s may be at most "
                       + str(MAX_BYTES // 1024 // 1024) + " MB")
     media = _media(data)
     if not media:
