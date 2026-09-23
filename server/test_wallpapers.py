@@ -35,7 +35,8 @@ def request(path, body=None, token=""):
     headers = {"Cookie": "ada_who=" + token} if token else {}
     if data is not None:
         headers["Content-Type"] = "application/json"
-    req = urllib.request.Request(BASE + path, data=data, headers=headers,
+    # The room's picture addresses are relative to the page, at its root here.
+    req = urllib.request.Request(BASE + "/" + path.lstrip("/"), data=data, headers=headers,
                                  method="POST" if data is not None else "GET")
     try:
         with urllib.request.urlopen(req, timeout=15) as res:
@@ -87,7 +88,7 @@ def main():
         initial = body_of(code, raw)
         check("the original garden remains the default", code == 200
               and initial.get("selected") == "default"
-              and initial.get("current", {}).get("url") == "/artwork/wallpaper.png", initial)
+              and initial.get("current", {}).get("url") == "artwork/wallpaper.png", initial)
 
         png = a_png(320, 180, (100, 90, 180))
         code, raw, _ = request("/api/wallpapers/upload", {

@@ -136,6 +136,9 @@ def _load() -> dict:
     if out["owner"] not in people:
         raise ValueError("identity.json: the owner must be one of the people")
     out["port"] = int(os.environ.get("ASSISTANT_PORT") or out["port"])
+    # The manager starts every room behind itself, on loopback, whatever the
+    # home's own file says: it is the only door that faces out.
+    out["bind"] = os.environ.get("ASSISTANT_BIND") or out["bind"]
     return out
 
 

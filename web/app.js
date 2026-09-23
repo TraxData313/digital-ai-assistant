@@ -340,7 +340,7 @@ function absorbState(fresh) {
 // One page further back. Returns how many rows it actually brought.
 async function pageBack(limit) {
   if (oldest === null || older <= 0) return 0;
-  const page = await getJson(`/api/rows?before=${oldest}&limit=${limit || 120}`);
+  const page = await getJson(`api/rows?before=${oldest}&limit=${limit || 120}`);
   shelve(page);
   oldest = page.oldest;
   older = page.older || 0;
@@ -784,7 +784,7 @@ function nativeActionHtml(e, grey) {
     const diffsBody = body(d._notes.filter(n => n.detail?.diff).map(n => n.detail.diff).join("\n\n"), true);
     inner += isAction ? actHtml("native-diffs:" + d._key, "", "Changes", "recorded turn diffs", diffsBody) : diffsBody;
   }
-  if (Number.isInteger(d.request_row)) inner += `<a href="/api/native-log?row=${d.request_row}" download="native-turn-${d.request_row}.json">Download run log</a>`;
+  if (Number.isInteger(d.request_row)) inner += `<a href="api/native-log?row=${d.request_row}" download="native-turn-${d.request_row}.json">Download run log</a>`;
   return actHtml("native:" + d._key, failed || d._runFailed ? "files snag" : "files", label, summary, inner, grey);
 }
 
@@ -794,7 +794,7 @@ function actFromEvent(e, grey) {
   const text = tidySummary(e.summary) + adapterTag(e.kind, e.detail);
   const mono = e.kind === "files" || e.kind === "shelf" || e.kind === "native";
   const download = e.kind === "native" && e.detail && Number.isInteger(e.detail.request_row)
-    ? `<a href="/api/native-log?row=${e.detail.request_row}" download="native-turn-${e.detail.request_row}.json">Download run log</a>` : "";
+    ? `<a href="api/native-log?row=${e.detail.request_row}" download="native-turn-${e.detail.request_row}.json">Download run log</a>` : "";
   return actHtml("ev:" + e.id, cls, label, text, body(eventDetail(e), mono) + download, grey);
 }
 
@@ -821,8 +821,8 @@ function picsHtml(pics, grey) {
       .filter(Boolean).join(" · ");
     // The stored name is a sha and a suffix, and nothing else is ever served
     // from that folder -- so an `src` built from it cannot point elsewhere.
-    return `<a class="pic" href="/pictures/${esc(p.file)}" target="_blank"`
-      + ` title="${esc(cap)}"><img src="/pictures/${esc(p.file)}"`
+    return `<a class="pic" href="pictures/${esc(p.file)}" target="_blank"`
+      + ` title="${esc(cap)}"><img src="pictures/${esc(p.file)}"`
       + ` alt="${esc(p.name || "picture")}" loading="lazy"></a>`;
   }).join("") + `</div>${gone}`;
 }
@@ -2078,7 +2078,7 @@ function wireRecall() {
   const sel = $("recall-model");
   if (sel) sel.onchange = async () => {
     try {
-      const got = await post("/api/recall/choose", { model: sel.value || null });
+      const got = await post("api/recall/choose", { model: sel.value || null });
       if (progress) progress.recall = got;
     } catch (e) { alert(e.message); }
     sel.blur();
@@ -2087,7 +2087,7 @@ function wireRecall() {
   const wsel = $("recall-writer");
   if (wsel) wsel.onchange = async () => {
     try {
-      const got = await post("/api/recall/writer", { writer: wsel.value || null });
+      const got = await post("api/recall/writer", { writer: wsel.value || null });
       if (progress) progress.recall = got;
     } catch (e) { alert(e.message); }
     wsel.blur();
@@ -2098,7 +2098,7 @@ function wireRecall() {
     const body = {};
     for (const el of MAIN.querySelectorAll("input.knob")) body[el.dataset.knob] = Number(el.value);
     try {
-      const got = await post("/api/recall/settings", body);
+      const got = await post("api/recall/settings", body);
       if (progress) progress.recall = got;
     } catch (e) { alert(e.message); }
     if (document.activeElement) document.activeElement.blur();
@@ -2107,12 +2107,12 @@ function wireRecall() {
   const reset = $("recall-knobs-reset");
   if (reset) reset.onclick = async () => {
     try {
-      const got = await post("/api/recall/settings", { reset: true });
+      const got = await post("api/recall/settings", { reset: true });
       if (progress) progress.recall = got;
     } catch (e) { alert(e.message); }
     paintRecall();
   };
-  for (const [id, url] of [["recall-download", "/api/recall/download"], ["recall-load", "/api/recall/load"]]) {
+  for (const [id, url] of [["recall-download", "api/recall/download"], ["recall-load", "api/recall/load"]]) {
     const b = $(id);
     if (b) b.onclick = async () => {
       b.disabled = true;
@@ -2128,7 +2128,7 @@ function wireRecall() {
     t.disabled = true;
     $("recall-try-note").textContent = "asking\u2026";
     try {
-      await post("/api/recall/try");
+      await post("api/recall/try");
       await pollProgress();
     } catch (e) { $("recall-try-note").textContent = String(e.message || e); t.disabled = false; return; }
     renderRecall(); paintRecall();
@@ -2181,7 +2181,7 @@ function wireDigest() {
   const on = $("digest-on");
   if (on) on.onchange = async () => {
     try {
-      const got = await post("/api/digest/settings", { on: on.checked });
+      const got = await post("api/digest/settings", { on: on.checked });
       if (progress) progress.digest = got;
     } catch (e) { alert(e.message); }
     renderDev();
@@ -2193,7 +2193,7 @@ function wireDigest() {
     const onEl = $("digest-on");
     if (onEl) body.on = onEl.checked;
     try {
-      const got = await post("/api/digest/settings", body);
+      const got = await post("api/digest/settings", body);
       if (progress) progress.digest = got;
     } catch (e) { alert(e.message); }
     if (document.activeElement) document.activeElement.blur();
@@ -2202,7 +2202,7 @@ function wireDigest() {
   const reset = $("digest-knobs-reset");
   if (reset) reset.onclick = async () => {
     try {
-      const got = await post("/api/digest/settings", { reset: true });
+      const got = await post("api/digest/settings", { reset: true });
       if (progress) progress.digest = got;
     } catch (e) { alert(e.message); }
     renderDev();
@@ -2239,7 +2239,7 @@ let modelsSeenFinish = null;
 function maybeRefreshModels(mv) {
   if (!mv || mv.active || !mv.finished || modelsSeenFinish === mv.finished) return;
   modelsSeenFinish = mv.finished;
-  fetch("/api/models").then((r) => r.json()).then((got) => {
+  fetch("api/models").then((r) => r.json()).then((got) => {
     if (state) { state.models = got; renderDev(); }
   }).catch(() => {});
 }
@@ -2289,7 +2289,7 @@ function wireModels() {
     set.disabled = true;
     if (note) note.textContent = "…";
     try {
-      const got = await post("/api/models", { folder: inp.value });
+      const got = await post("api/models", { folder: inp.value });
       if (state) state.models = got;
       if (note) note.textContent = "";
     } catch (e) {
@@ -2305,7 +2305,7 @@ function wireModels() {
   if (mv) mv.onclick = async () => {
     mv.disabled = true;
     try {
-      const got = await post("/api/models/move", { from: mv.dataset.from });
+      const got = await post("api/models/move", { from: mv.dataset.from });
       if (state) state.models = got;
     } catch (e) { alert(e.message); mv.disabled = false; return; }
     renderDev();
@@ -2433,7 +2433,7 @@ function wireWallpapers(root = MAIN, rerender = renderDev) {
     say("uploading " + (file.name || "wallpaper") + "…", false);
     try {
       const data = await readAsDataURL(file);
-      const got = await post("/api/wallpapers/upload", {name: file.name, data});
+      const got = await post("api/wallpapers/upload", {name: file.name, data});
       if (state) state.wallpaper = got;
       applyWallpaper(got);
       WALLPAPER_NOTICE = {text: "Uploaded and now using " + ((got.current || {}).name || file.name), bad: false};
@@ -2452,7 +2452,7 @@ function wireWallpapers(root = MAIN, rerender = renderDev) {
     for (const b of root.querySelectorAll(".wallpaper-option")) b.disabled = true;
     say("changing the room background…", false);
     try {
-      const got = await post("/api/wallpapers/choose", {id: button.dataset.wallpaper});
+      const got = await post("api/wallpapers/choose", {id: button.dataset.wallpaper});
       if (state) state.wallpaper = got;
       applyWallpaper(got);
       WALLPAPER_NOTICE = {text: "Room background changed to " + ((got.current || {}).name || "the selected image"), bad: false};
@@ -2492,7 +2492,7 @@ function wireNotes() {
     btn.disabled = true;
     note.textContent = "saving…";
     try {
-      const got = await post("/api/notes", { who, text: box.value });
+      const got = await post("api/notes", { who, text: box.value });
       if (state) state.notes = got;
       note.textContent = "saved";
     } catch (e) {
@@ -2528,7 +2528,7 @@ async function loadProviders(force) {
   if (PROV_ASKED && !force) return PROV;
   PROV_ASKED = true;
   try {
-    PROV = await getJson("/api/providers");
+    PROV = await getJson("api/providers");
   } catch (e) {
     PROV = { error: e.message };
   }
@@ -2538,7 +2538,7 @@ async function loadProviders(force) {
   if (PROV && !PROV.error && !PROV.prices_read_at && !force) {
     setTimeout(async () => {
       try {
-        const again = await getJson("/api/providers");
+        const again = await getJson("api/providers");
         if (again && again.prices_read_at) { PROV = again; paintProviders(); }
       } catch (e) { /* it stands as it is */ }
     }, 3000);
@@ -2770,7 +2770,7 @@ function devProviders() {
 }
 
 async function cancelNativeTools() {
-  try { await post("/api/native-tools/cancel", {}); }
+  try { await post("api/native-tools/cancel", {}); }
   catch (e) { alert(e.message); }
 }
 
@@ -2778,7 +2778,7 @@ function wireProviders() {
   const native = $("prov-native-tools");
   if (native) native.onchange = async () => {
     native.disabled = true;
-    try { PROV = await post("/api/providers/native-tools", {enabled: native.checked}); }
+    try { PROV = await post("api/providers/native-tools", {enabled: native.checked}); }
     catch (e) { alert(e.message); }
     finally { native.checked = !!PROV.native_tools; native.disabled = false; paintProviders(); }
   };
@@ -2788,45 +2788,45 @@ function wireProviders() {
   const mode = $("prov-codex-only");
   if (mode) mode.onchange = async () => {
     mode.disabled = true;
-    try { PROV = await post("/api/providers/codex-only", { enabled: mode.checked }); }
+    try { PROV = await post("api/providers/codex-only", { enabled: mode.checked }); }
     catch (e) { alert(e.message); }
     paintProviders();
-    progress = await getJson("/api/progress");
+    progress = await getJson("api/progress");
     renderUsage();
   };
   const pick = $("prov-pick");
   if (pick) pick.onchange = async () => {
-    try { PROV = await post("/api/providers/choose", { model: pick.value }); }
+    try { PROV = await post("api/providers/choose", { model: pick.value }); }
     catch (e) { alert(e.message); }
     pick.blur(); paintProviders(); renderUsage();
   };
   const dream = $("prov-dream");
   if (dream) dream.onchange = async () => {
-    try { PROV = await post("/api/providers/dream", { model: dream.value }); }
+    try { PROV = await post("api/providers/dream", { model: dream.value }); }
     catch (e) { alert(e.message); }
     dream.blur(); paintProviders();
   };
   for (const b of MAIN.querySelectorAll(".prov-key-save")) b.onclick = async () => {
     const box = MAIN.querySelector(`.prov-key-box[data-slot="${b.dataset.slot}"]`);
     if (!box || !box.value.trim()) return;
-    try { PROV = await post("/api/providers/key", { service: b.dataset.slot, key: box.value }); }
+    try { PROV = await post("api/providers/key", { service: b.dataset.slot, key: box.value }); }
     catch (e) { alert(e.message); return; }
     box.value = ""; paintProviders();
   };
   for (const b of MAIN.querySelectorAll(".prov-key-clear")) b.onclick = async () => {
     if (!confirm("Clear this key? Any model that needs it stops being offered.")) return;
-    try { PROV = await post("/api/providers/key", { service: b.dataset.slot, key: "" }); }
+    try { PROV = await post("api/providers/key", { service: b.dataset.slot, key: "" }); }
     catch (e) { alert(e.message); return; }
     paintProviders();
   };
   for (const b of MAIN.querySelectorAll(".prov-credit-save")) b.onclick = async () => {
     const box = MAIN.querySelector(`.prov-credit[data-service="${b.dataset.service}"]`);
-    try { PROV = await post("/api/providers/credits", { service: b.dataset.service, usd: box ? box.value : "" }); }
+    try { PROV = await post("api/providers/credits", { service: b.dataset.service, usd: box ? box.value : "" }); }
     catch (e) { alert(e.message); return; }
     paintProviders();
   };
   for (const b of MAIN.querySelectorAll(".prov-credit-clear")) b.onclick = async () => {
-    try { PROV = await post("/api/providers/credits", { service: b.dataset.service, usd: "" }); }
+    try { PROV = await post("api/providers/credits", { service: b.dataset.service, usd: "" }); }
     catch (e) { alert(e.message); return; }
     paintProviders();
   };
@@ -2959,7 +2959,7 @@ async function takeBackup() {
   btn.classList.remove("broken");
   btn.textContent = "taking a copy…";
   try {
-    const got = await post("/api/backup");
+    const got = await post("api/backup");
     const counts = Object.entries(got.counts || {}).map(([t, n]) => t + " " + n).join(", ");
     btn.textContent = "take a backup now";
     note.textContent = `backed up just now · ${got.file.split(/[\\/]/).pop()} · ${got.size_kb} KB · checked: ${got.integrity} · ${counts}` +
@@ -3883,7 +3883,7 @@ function renderProjects() {
 }
 
 async function refreshProjects() {
-  try { plans = await getJson("/api/projects"); } catch (e) { /* ask again later */ }
+  try { plans = await getJson("api/projects"); } catch (e) { /* ask again later */ }
 }
 
 function val(name) {
@@ -3971,7 +3971,7 @@ async function projectDo(t) {
     if (!String(body.title).trim()) return;
   }
   try {
-    const out = await post("/api/project", body);
+    const out = await post("api/project", body);
     plans = out.view;
     for (const k of Object.keys(FORM)) delete FORM[k];
     renderProjects();
@@ -4019,7 +4019,7 @@ function show(which) {
 }
 
 async function refreshWorkers() {
-  try { workers = await getJson("/api/workers"); } catch (e) { /* ask again later */ }
+  try { workers = await getJson("api/workers"); } catch (e) { /* ask again later */ }
 }
 
 // The plan gauge is read on the poll, so it changes between renders. Redraw
@@ -4040,7 +4040,7 @@ function usageIfMoved() {
 }
 
 async function pollProgress() {
-  try { progress = await getJson("/api/progress"); } catch (e) { /* the next poll asks again */ }
+  try { progress = await getJson("api/progress"); } catch (e) { /* the next poll asks again */ }
 }
 
 // A turn already running -- one a person started, one a hand woke it for, or one
@@ -4080,7 +4080,7 @@ async function watchIfBusy() {
         let ended;
         // A failed fetch leaves the preview standing -- the words, still on
         // screen -- and the next tick tries again.
-        try { ended = await getJson("/api/state"); } catch (e) { return; }
+        try { ended = await getJson("api/state"); } catch (e) { return; }
         watchedTurn = progress.turn;
         turnStart = Date.now() - (progress.elapsed || 0) * 1000;
         absorbState(ended);
@@ -4096,7 +4096,7 @@ async function watchIfBusy() {
     // took to arrive. On a failed fetch the preview stands and the next tick
     // tries again, rather than leaving the chat blank.
     let fresh;
-    try { fresh = await getJson("/api/state"); } catch (e) { return; }
+    try { fresh = await getJson("api/state"); } catch (e) { return; }
     clearInterval(poller);
     watching = false;
     watchedTurn = null;
@@ -4331,7 +4331,7 @@ async function send() {
   renderChat();
   MAIN.scrollTop = MAIN.scrollHeight;
   try {
-    const data = await post("/api/send", {
+    const data = await post("api/send", {
       text, who,
       pictures: pics.map((p) => ({ name: p.name, data: p.data })),
     });
@@ -4372,7 +4372,7 @@ MAIN.addEventListener("change", async (e) => {
   if (!sel) return;
   sel.blur();
   try {
-    const out = await post("/api/project", {
+    const out = await post("api/project", {
       who: whoNow(), op: "task_edit",
       task: Number(sel.dataset.task), state: sel.value });
     plans = out.view;
@@ -4410,7 +4410,7 @@ MAIN.addEventListener("click", async (e) => {
   }
   if (t.classList.contains("reload")) {
     try {
-      absorbState(await post("/api/reload",
+      absorbState(await post("api/reload",
         { ids: String(t.dataset.id).split(",").map(Number) }));
       render();
     } catch (err) { alert(err.message); }
@@ -4565,7 +4565,7 @@ async function reachRow(id) {
   }
 }
 
-getJson("/api/state").then(async (s) => {
+getJson("api/state").then(async (s) => {
   absorbState(s);
   render();
   MAIN.scrollTop = MAIN.scrollHeight;
@@ -4589,7 +4589,7 @@ getJson("/api/state").then(async (s) => {
 // appears. The address is selectable because pairing is copying it, once,
 // to the thing in a pocket.
 let PAIR_LINE = "";
-fetch("/api/pair", { cache: "no-store" }).then((r) => {
+fetch("api/pair", { cache: "no-store" }).then((r) => {
   // 403 is the ordinary answer on a phone, not a fault: the line is for the
   // machine itself. Checked rather than left to r.json() throwing on an empty
   // body, so a real breakage is not filed under "not this machine".
@@ -4639,7 +4639,7 @@ window.assistantVoiceRows = rows => {
   shelve({rows}); laidOut(state); renderChat();
   if (bottom) MAIN.scrollTop = MAIN.scrollHeight;
 };
-window.assistantVoiceRefresh = async () => { absorbState(await getJson('/api/state')); render(); };
+window.assistantVoiceRefresh = async () => { absorbState(await getJson('api/state')); render(); };
 
 // --- the face, and the other assistants on this machine --------------------
 // The portrait opens a dialog for the face and the room's background; the
@@ -4660,7 +4660,7 @@ let homesList = null;
 function wearPortrait(url) {
   if (url) $("portrait").src = url;
   const icon = document.querySelector('link[rel="icon"]');
-  if (icon) icon.href = "/artwork/icon.ico?v=" + Date.now();
+  if (icon) icon.href = "artwork/icon.ico?v=" + Date.now();
 }
 
 function faceHtml() {
@@ -4670,13 +4670,13 @@ function faceHtml() {
   const maxBytes = Number(ps.max_bytes) || WALLPAPER_MAX_BYTES;
   let html = `<h2 id="face-title">Portrait and background</h2>`;
   html += `<section class="face-part"><h3>Portrait</h3>` +
-    `<p class="quiet">The face ${esc(MY_NAME)} wears here, on a phone's home screen and in the corner of the screen. ` +
+    `<p class="quiet">The face ${esc(MY_NAME)} wears here, in the manager's list, and on a phone's home screen. ` +
     `New pictures are kept in ${esc(MY_NAME)}'s artwork folder; the original face stays available.</p>` +
     `<div class="wallpaper-upload"><input id="portrait-file" type="file" accept="image/png,image/jpeg,image/gif,image/webp">` +
     `<button id="portrait-upload" type="button" disabled>upload and use it</button></div>` +
     `<p id="portrait-note" class="wallpaper-note${note.bad ? " bad" : ""}" role="status">` +
     esc(note.text || "PNG, JPEG, GIF or WEBP · up to " + Math.round(maxBytes / 1024 / 1024) +
-        " MB · the icon in the corner changes the next time it starts") + `</p>`;
+        " MB") + `</p>`;
   html += items.length
     ? `<div class="portrait-grid" role="radiogroup" aria-label="Portraits">` + items.map((item) =>
       `<button class="wallpaper-option portrait-option" type="button" role="radio" data-portrait="${esc(item.id)}" ` +
@@ -4728,7 +4728,7 @@ function wirePortraits() {
     say("drawing the new face…", false);
     try {
       const data = await readAsDataURL(file);
-      wore(await post("/api/portraits/upload", {name: file.name, data}), "Uploaded, and wearing " + (file.name || "it") + " now");
+      wore(await post("api/portraits/upload", {name: file.name, data}), "Uploaded, and wearing " + (file.name || "it") + " now");
     } catch (e) {
       portraitBusy = false;
       upload.disabled = false;
@@ -4742,7 +4742,7 @@ function wirePortraits() {
     say("changing the portrait…", false);
     try {
       const name = button.querySelector(".wallpaper-name").textContent;
-      wore(await post("/api/portraits/choose", {id: button.dataset.portrait}), "Wearing " + name + " now");
+      wore(await post("api/portraits/choose", {id: button.dataset.portrait}), "Wearing " + name + " now");
     } catch (e) {
       portraitBusy = false;
       for (const b of root.querySelectorAll(".portrait-option")) b.disabled = false;
@@ -4753,62 +4753,47 @@ function wirePortraits() {
 
 async function openFace() {
   PORTRAIT_NOTICE = null;
-  try { portraitState = await getJson("/api/portraits"); } catch (e) { portraitState = null; }
+  try { portraitState = await getJson("api/portraits"); } catch (e) { portraitState = null; }
   if (!state || !state.wallpaper) {
-    try { faceWallpaper = await getJson("/api/wallpapers"); } catch (e) { faceWallpaper = null; }
+    try { faceWallpaper = await getJson("api/wallpapers"); } catch (e) { faceWallpaper = null; }
   }
   renderFace();
   if (!FACE_DIALOG.open) FACE_DIALOG.showModal();
 }
 
 // --- the list under the name ---
+// Behind the manager (the usual way), the list is the manager's: every
+// assistant at one address, /<slug>/, so switching is an ordinary link and
+// works the same on a phone. Reached directly on its own port, the room
+// knows only itself and says where the others are.
 
 function closeAssistantMenu() {
   MENU.hidden = true;
   PICK.setAttribute("aria-expanded", "false");
 }
 
+const MANAGED = !!ASSISTANT.managed;
+
+function managerAddress() {
+  return location.protocol + "//" + location.hostname + ":" + (ASSISTANT.manager_port || 8787) + "/";
+}
+
 function assistantMenuHtml(list, problem) {
+  if (!MANAGED) {
+    return `<p class="assistant-note">This room was opened directly, on its own port. ` +
+      `The other assistants are in the <a href="${esc(managerAddress())}">Digital Assistant Manager</a>.</p>`;
+  }
   if (problem) return `<p class="assistant-note">${esc(problem)}</p>`;
-  const homes = (list && list.homes) || [];
-  return homes.map((h) => {
-    const where = h.current ? "this room" : (h.awake ? "awake" : "asleep — opening wakes it");
-    return `<button type="button" role="menuitemradio" aria-checked="${h.current ? "true" : "false"}" ` +
-      `class="assistant-item${h.current ? " current" : ""}" data-home="${esc(h.home)}">` +
-      `<b>${esc(h.title || h.name)}</b><span class="quiet">${esc(where)} · port ${esc(h.port)}</span></button>`;
+  const all = (list && list.assistants) || [];
+  return all.map((a) => {
+    const here = a.slug === ASSISTANT.slug;
+    const where = here ? "this room" : a.word;
+    return `<a role="menuitemradio" aria-checked="${here ? "true" : "false"}" ` +
+      `class="assistant-item${here ? " current" : ""}" href="/${esc(a.slug)}/">` +
+      `<b>${esc(a.title || a.name)}</b><span class="quiet">${esc(where)}</span></a>`;
   }).join("") +
-    `<button type="button" role="menuitem" class="assistant-item assistant-new" id="assistant-new">+ New assistant…</button>`;
-}
-
-// A tab is opened inside the click itself, before the room is asked:
-// a tab opened after waiting is a popup, and browsers block those.
-function waitingTab(text) {
-  const tab = window.open("", "_blank");
-  if (tab) {
-    tab.document.title = text;
-    tab.document.body.style.cssText = "background:#16130f;color:#bbb;font:18px system-ui,sans-serif;padding:28px";
-    tab.document.body.textContent = text;
-  }
-  return tab;
-}
-
-function sendTab(tab, url, whereToSay, name) {
-  if (tab && !tab.closed) { tab.location.href = url; return true; }
-  whereToSay.innerHTML = `<p class="assistant-note">The browser held the new tab back. ` +
-    `<a href="${esc(url)}" target="_blank" rel="opener">Open ${esc(name)}'s room</a></p>`;
-  return false;
-}
-
-async function switchTo(folder, name) {
-  const tab = waitingTab("waking " + name + "…");
-  MENU.innerHTML = `<p class="assistant-note">waking ${esc(name)}… the first start can take half a minute</p>`;
-  try {
-    const got = await post("/api/homes/open", {home: folder});
-    if (sendTab(tab, got.url, MENU, name)) closeAssistantMenu();
-  } catch (e) {
-    if (tab) tab.close();
-    MENU.innerHTML = `<p class="assistant-note bad">${esc(String(e.message || e))}</p>`;
-  }
+    `<a role="menuitem" class="assistant-item" href="/">Manage assistants…</a>` +
+    (list && list.owner ? `<button type="button" role="menuitem" class="assistant-item assistant-new" id="assistant-new">+ New assistant…</button>` : "");
 }
 
 async function openAssistantMenu() {
@@ -4816,19 +4801,17 @@ async function openAssistantMenu() {
   MENU.hidden = false;
   PICK.setAttribute("aria-expanded", "true");
   let list = null, problem = "";
-  try {
-    const r = await fetch("/api/homes", {cache: "no-store"});
-    const data = await r.json();
-    if (r.ok) list = data; else problem = data.error || "the list is not available here";
-  } catch (e) {
-    problem = String(e.message || e);
+  if (MANAGED) {
+    try {
+      list = await getJson("/_/api/list");
+    } catch (e) {
+      problem = "the manager's list is not available just now";
+    }
   }
   homesList = list;
   MENU.innerHTML = assistantMenuHtml(list, problem);
-  for (const b of MENU.querySelectorAll(".assistant-item[data-home]")) b.onclick = () => {
-    if (b.classList.contains("current")) { closeAssistantMenu(); return; }
-    switchTo(b.dataset.home, b.querySelector("b").textContent);
-  };
+  const here = MENU.querySelector(".assistant-item.current");
+  if (here) here.onclick = (e) => { e.preventDefault(); closeAssistantMenu(); };
   const add = MENU.querySelector("#assistant-new");
   if (add) add.onclick = () => { closeAssistantMenu(); openNewAssistant(); };
 }
@@ -4842,14 +4825,14 @@ function folderFor(parent, name) {
   return parent.replace(/[\\\/]+$/, "") + "\\" + safe;
 }
 
-function newAssistantHtml() {
+function newAssistantHtml(atDesk) {
   return `<h2 id="new-assistant-title">A new assistant</h2>` +
     `<p class="quiet">An empty folder becomes its home: its memory, its Spark, its pictures and its backups, ` +
-    `kept apart from ${esc(MY_NAME)}'s. It opens in a new tab on its own port, and thinks through the same model ` +
-    `as ${esc(MY_NAME)} until you change that in its Settings.</p>` +
+    `kept apart from ${esc(MY_NAME)}'s. It gets its own place in the manager, and thinks through the same model ` +
+    `as the first assistant here until you change that in its Settings.</p>` +
     `<label class="field">Name<input id="na-name" type="text" maxlength="40" autocomplete="off" spellcheck="false"></label>` +
     `<label class="field">Folder<span class="field-row"><input id="na-folder" type="text" autocomplete="off" spellcheck="false">` +
-    `<button id="na-browse" type="button">Browse…</button></span></label>` +
+    (atDesk ? `<button id="na-browse" type="button">Browse…</button>` : "") + `</span></label>` +
     `<p id="na-note" class="wallpaper-note" role="status">Before talking to it much, write its Spark: ` +
     `data\\spark.md in its folder, the text it reads as itself.</p>` +
     `<div class="dialog-actions"><button id="na-create" type="button" disabled>Create and open</button>` +
@@ -4858,17 +4841,13 @@ function newAssistantHtml() {
 
 async function openNewAssistant() {
   if (!homesList) {
-    try {
-      const r = await fetch("/api/homes", {cache: "no-store"});
-      if (r.ok) homesList = await r.json();
-    } catch (e) { /* the folder box starts empty */ }
+    try { homesList = await getJson("/_/api/list"); } catch (e) { /* the folder box starts empty */ }
   }
-  NEW_DIALOG.innerHTML = newAssistantHtml();
+  NEW_DIALOG.innerHTML = newAssistantHtml(!!(homesList && homesList.desk));
   const nameEl = NEW_DIALOG.querySelector("#na-name"), folderEl = NEW_DIALOG.querySelector("#na-folder");
   const create = NEW_DIALOG.querySelector("#na-create"), browse = NEW_DIALOG.querySelector("#na-browse");
   const note = NEW_DIALOG.querySelector("#na-note");
-  const parentDefault = (homesList && homesList.default_parent) || "";
-  let parent = parentDefault, typed = false, busy = false;
+  let parent = (homesList && homesList.default_parent) || "", typed = false, busy = false;
   const say = (text, bad) => { note.textContent = text; note.classList.toggle("bad", !!bad); };
   const ready = () => { create.disabled = busy || !nameEl.value.trim() || !folderEl.value.trim(); };
   nameEl.oninput = () => {
@@ -4876,11 +4855,11 @@ async function openNewAssistant() {
     ready();
   };
   folderEl.oninput = () => { typed = true; ready(); };
-  browse.onclick = async () => {
+  if (browse) browse.onclick = async () => {
     say("A folder dialog is open on this screen. Choose where it should live.", false);
     browse.disabled = true;
     try {
-      const got = await post("/api/homes/browse", {from: parent});
+      const got = await post("/_/api/browse", {from: parent});
       if (got.folder) {
         const leaf = got.folder.split(/[\\\/]/).pop() || "";
         const name = nameEl.value.trim();
@@ -4907,14 +4886,12 @@ async function openNewAssistant() {
     if (!name || !folder || busy) return;
     busy = true;
     ready();
-    const tab = waitingTab("making " + name + "…");
     say("Making " + name + " and waking it. The first start can take half a minute.", false);
     try {
-      const got = await post("/api/homes/new", {name, folder});
+      const got = await post("/_/api/new", {name, folder});
       homesList = null;
-      if (sendTab(tab, got.url, note, name)) NEW_DIALOG.close();
+      location.href = got.url;
     } catch (e) {
-      if (tab) tab.close();
       busy = false;
       ready();
       say(String(e.message || e), true);

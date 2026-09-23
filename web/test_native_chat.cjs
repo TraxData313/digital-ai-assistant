@@ -16,6 +16,6 @@ assert.match(source, /On by default for Codex chat/);
 assert.match(source, /Download run log/);
 assert.match(source, /native-stop-live/);
 assert.match(source, /function nativeActionHtml/);
-assert.match(source, /post\("\/api\/providers\/native-tools", \{enabled: native.checked\}\)/);
-assert.match(source, /post\("\/api\/native-tools\/cancel", \{\}\)/);
+assert.match(source, /post\("api\/providers\/native-tools", \{enabled: native.checked\}\)/);
+assert.match(source, /post\("api\/native-tools\/cancel", \{\}\)/);
 console.log('Native chat UI checks passed: readable commands/results, log download, toggle, active command and cancellation.');

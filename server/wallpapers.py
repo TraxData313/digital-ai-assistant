@@ -92,8 +92,8 @@ def _entry(identifier: str, path: Path, *, built_in=False):
     w, h = size
     if w > MAX_EDGE or h > MAX_EDGE or w * h > MAX_PIXELS:
         return None
-    url = ("/artwork/wallpaper.png" if built_in else
-           "/artwork/wallpapers/" + quote(path.name))
+    url = ("artwork/wallpaper.png" if built_in else
+           "artwork/wallpapers/" + quote(path.name))
     return {"id": identifier, "name": home.WALLPAPER_NAME if built_in else path.stem,
             "file": path.name, "url": url, "media_type": media,
             "bytes": len(data), "width": w, "height": h,

@@ -141,7 +141,7 @@ def main():
     default = home.CODE / "artwork" / "portrait.png"
     check("a bare home shows the code's default face as its original",
           (art2 / "portraits" / "original" / "preview.png").read_bytes() == default.read_bytes()
-          and portraits.status()["items"][0]["url"].startswith("/artwork/portraits/original/preview.png"))
+          and portraits.status()["items"][0]["url"].startswith("artwork/portraits/original/preview.png"))
     check("while the new face is its own", all((art2 / n).is_file() for n in portraits.FACE))
     portraits.choose("original")
     check("choosing the original takes every drawn file away again, so the defaults show",
@@ -159,8 +159,10 @@ def main():
     threading.Thread(target=room.serve_forever, daemon=True).start()
 
     def ask(path, body=None):
+        # The room's picture addresses are relative to the page, which sits
+        # at the room's root here.
         data = json.dumps(body).encode("utf-8") if body is not None else None
-        req = urllib.request.Request(base + path, data=data, headers={"Cookie": jar})
+        req = urllib.request.Request(base + "/" + path.lstrip("/"), data=data, headers={"Cookie": jar})
         if data:
             req.add_header("Content-Type", "application/json")
         try:

@@ -403,7 +403,8 @@ class Strikes:
     Anything else punishes a person for restarting it by hand twice in a row,
     which is a thing done on purpose and should never be read as a failure."""
 
-    def __init__(self):
+    def __init__(self, name=None):
+        self.name = name or home.NAME
         self.never_opened = 0
         self.falls = deque(maxlen=FALLING_OVER_TIMES * 2)
 
@@ -413,7 +414,7 @@ class Strikes:
         if not answered:
             self.never_opened += 1
             if self.never_opened >= NEVER_OPENED_TIMES:
-                return (f"{home.NAME} stopped {self.never_opened} times "
+                return (f"{self.name} stopped {self.never_opened} times "
                         "without ever opening the room")
             return ""
         self.never_opened = 0
@@ -422,7 +423,7 @@ class Strikes:
         recent = [when for when in self.falls
                   if now - when <= FALLING_OVER_WINDOW]
         if len(recent) >= FALLING_OVER_TIMES:
-            return (f"{home.NAME} fell over {len(recent)} times in "
+            return (f"{self.name} fell over {len(recent)} times in "
                     f"{int(FALLING_OVER_WINDOW / 60)} minutes")
         return ""
 

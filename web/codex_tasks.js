@@ -9,7 +9,7 @@
   // Share an in-flight read between the panel and the header. Polling only
   // updates the indicator, so it cannot replace a form somebody is editing.
   function readState() {
-    if (!reading) reading = getJson('/api/codex').then(state => {
+    if (!reading) reading = getJson('api/codex').then(state => {
       renderSessions(state);
       return state;
     }, error => {
@@ -52,7 +52,7 @@
     node.type = 'button';
     node.onclick = async () => {
       node.disabled = true;
-      try { await post('/api/codex', body); await refresh(); }
+      try { await post('api/codex', body); await refresh(); }
       catch (error) { element('p', error.message, view).setAttribute('role', 'alert'); }
       finally { node.disabled = false; }
     };
@@ -73,7 +73,7 @@
         const connect = element('button', 'Connect');
         connect.onclick = async () => {
           connect.disabled = true;
-          try { await post('/api/codex', {action: 'connect', controller: input.value.trim()}); await refresh(); }
+          try { await post('api/codex', {action: 'connect', controller: input.value.trim()}); await refresh(); }
           catch (error) { element('p', error.message).setAttribute('role', 'alert'); }
           finally { connect.disabled = false; }
         };
@@ -90,7 +90,7 @@
       }
       mode.value = state.project_mode || 'worktree';
       mode.onchange = async () => {
-        try { await post('/api/codex', {action: 'project_mode', mode: mode.value}); }
+        try { await post('api/codex', {action: 'project_mode', mode: mode.value}); }
         catch (error) { element('p', error.message).setAttribute('role', 'alert'); }
       };
       const refreshButton = element('button', 'Refresh tasks');

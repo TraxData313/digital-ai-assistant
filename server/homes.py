@@ -1,33 +1,37 @@
 """The assistants this install knows, and making another.
 
-One install runs one home by default -- the one `home.json` points at. This
-is the rest of the shelf: every home made or opened from the room, so the
-page can list them, wake one that is asleep, and make a new one. Each runs as
-its own room on its own port, held by its own icon in the corner, with its own
-store; nothing here lets one read another's memory.
+The manager (`server/manager.py`) holds every one of them: it starts each
+room, brings it back when it falls, leaves it down when someone stopped it,
+and is the one door they are all reached through. This is the shelf it reads.
 
-Everything that acts -- making a home, starting a room, handing the browser
-a key -- is for the desk only, and the routes check that before calling in.
-The list itself lives in `homes.json` beside the code: which folders, nothing
-else. It is per machine, like `home.json`, and never committed.
+`homes.json` beside the code says which folders, which of them were stopped
+on purpose, and which port the manager answers on. It is per machine, like
+`home.json`, and never committed. The home `home.json` points at is on the
+shelf whether or not the list names it.
 
     python -m server.homes          # what this install knows, and who is awake
 """
 
 import json
 import os
+import secrets
 import socket
-import subprocess
-import sys
 import threading
-import time
 from pathlib import Path
 
 from . import home, setup
 
-REGISTRY = home.CODE / "homes.json"
-START = home.CODE / "start.pyw"
-# What a new assistant keeps from the room that made it: which mind it
+# A bench keeps its own list, and then home.json is not consulted either:
+# nothing a test does may find the real assistants.
+_OWN_REGISTRY = os.environ.get("ASSISTANT_REGISTRY")
+REGISTRY = Path(_OWN_REGISTRY) if _OWN_REGISTRY else home.CODE / "homes.json"
+# The one port the manager answers on for all of them, and how wide. Wide on
+# purpose, as the room used to be: narrowed at the door to this machine and
+# the owner's tailnet, never at the socket (see the room's own reasons in
+# app.main).
+FRONT_PORT = 8787
+FRONT_BIND = "0.0.0.0"
+# What a new assistant keeps from the one that made it: which mind it
 # thinks through. Not the balance or when it was set -- those are one
 # account's figures, and they belong to the room that read them.
 MIND_KEYS = ("model", "dream_model", "codex_only", "native_tools")
@@ -38,35 +42,73 @@ _BROWSING = threading.Lock()
 
 
 class Refused(ValueError):
-    """Something the room will not do, with a reason fit for the page."""
+    """Something that will not be done, with a reason fit for the page."""
 
 
 def _same(a, b) -> bool:
     return os.path.normcase(str(Path(a).resolve())) == os.path.normcase(str(Path(b).resolve()))
 
 
-def _read_registry() -> list:
+def _read() -> dict:
     try:
-        got = json.loads(REGISTRY.read_text(encoding="utf-8")).get("homes")
-        return [str(p) for p in got if isinstance(p, str)] if isinstance(got, list) else []
-    except (OSError, ValueError, AttributeError):
-        return []
+        got = json.loads(REGISTRY.read_text(encoding="utf-8"))
+        got = got if isinstance(got, dict) else {}
+    except (OSError, ValueError):
+        got = {}
+
+    def paths(key):
+        v = got.get(key)
+        return [str(p) for p in v if isinstance(p, str)] if isinstance(v, list) else []
+
+    port = got.get("port")
+    return {"homes": paths("homes"), "stopped": paths("stopped"),
+            "port": port if isinstance(port, int) and 0 < port < 65536 else FRONT_PORT,
+            "bind": str(got.get("bind") or FRONT_BIND)}
+
+
+def _write(data: dict) -> None:
+    tmp = REGISTRY.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, indent=1) + "\n", encoding="utf-8")
+    os.replace(tmp, REGISTRY)
+
+
+def front() -> tuple:
+    """Where the manager answers: (bind, port)."""
+    got = _read()
+    return got["bind"], got["port"]
 
 
 def remember(folder) -> None:
     """Add a home to this install's list. Idempotent."""
     folder = Path(folder).resolve()
     with _LOCK:
-        have = _read_registry()
-        if any(_same(p, folder) for p in have):
+        data = _read()
+        if any(_same(p, folder) for p in data["homes"]):
             return
-        have.append(str(folder))
-        tmp = REGISTRY.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"homes": have}, indent=1) + "\n", encoding="utf-8")
-        os.replace(tmp, REGISTRY)
+        data["homes"].append(str(folder))
+        _write(data)
+
+
+def stopped(folder) -> bool:
+    """Whether someone put this assistant down and meant it to stay down."""
+    return any(_same(p, folder) for p in _read()["stopped"])
+
+
+def set_stopped(folder, down: bool) -> None:
+    """Kept across restarts of the manager and of the machine: a stopped
+    assistant does not come back at login, dream at night, or run its jobs
+    until someone starts it again."""
+    folder = Path(folder).resolve()
+    with _LOCK:
+        data = _read()
+        rest = [p for p in data["stopped"] if not _same(p, folder)]
+        data["stopped"] = rest + ([str(folder)] if down else [])
+        _write(data)
 
 
 def _pointer():
+    if _OWN_REGISTRY:
+        return None
     try:
         chosen = json.loads(home.POINTER.read_text(encoding="utf-8")).get("home")
         return Path(chosen) if chosen else None
@@ -75,10 +117,8 @@ def _pointer():
 
 
 def identity(folder) -> dict:
-    """A home's identity.json, or {} if the folder holds no assistant. This
-    room's own is the one it is running as, file or not."""
-    if _same(folder, home.HOME):
-        return dict(home.IDENTITY)
+    """A home's identity.json as it is on disk now, or {} if the folder holds
+    no assistant."""
     try:
         got = json.loads((Path(folder) / "identity.json").read_text(encoding="utf-8"))
         return got if isinstance(got, dict) else {}
@@ -87,15 +127,15 @@ def identity(folder) -> dict:
 
 
 def known() -> list:
-    """Every home this install knows: this room's, the one home.json runs,
-    and the rest of the list -- once each, and only folders that still hold
-    an assistant."""
-    out = [home.HOME.resolve()]
-    for p in [_pointer(), *_read_registry()]:
+    """Every home this install knows: the one home.json runs, then the list,
+    then this room's own -- once each, and only folders that still hold an
+    assistant. Never the code folder, whose identity is a bench's."""
+    out = []
+    for p in [_pointer(), *_read()["homes"], home.HOME if home.is_real() else None]:
         if not p:
             continue
         p = Path(p)
-        if not identity(p) or any(_same(p, q) for q in out):
+        if _same(p, home.CODE) or not identity(p) or any(_same(p, q) for q in out):
             continue
         out.append(p.resolve())
     return out
@@ -111,29 +151,91 @@ def listening(port, timeout=0.3) -> bool:
 
 def entry(folder) -> dict:
     ident = identity(folder)
-    current = _same(folder, home.HOME)
     port = ident.get("port")
     return {
         "home": str(Path(folder).resolve()),
         "name": ident.get("name") or Path(folder).name,
         "title": ident.get("title") or ident.get("name") or Path(folder).name,
         "slug": ident.get("slug") or "",
+        "owner": ident.get("owner") or "",
         "port": port,
-        "current": current,
-        # This room is awake by definition; the others are asked.
-        "awake": True if current else listening(port),
+        "awake": listening(port),
+        "stopped": stopped(folder),
     }
 
 
-def listing() -> dict:
-    return {"homes": [entry(p) for p in known()],
-            # Where a new one goes unless told otherwise: beside this one.
-            "default_parent": str(home.HOME.parent if home.is_real() else Path.home() / "Documents")}
+def default_parent() -> str:
+    """Where a new one goes unless told otherwise: beside the first one."""
+    first = known()
+    return str(first[0].parent if first else Path.home() / "Documents")
 
+
+def listing() -> dict:
+    return {"homes": [entry(p) for p in known()], "default_parent": default_parent()}
+
+
+# -- keys ---------------------------------------------------------------------
+# Each home keeps its own people's keys under data/people. The manager reads
+# them to know who is at a browser, never to hand one out.
+
+def keys_of(folder) -> dict:
+    """Every paired person in a home, name to key, read off its disk now."""
+    out = {}
+    try:
+        for f in sorted((Path(folder) / "data" / "people").glob("*.token")):
+            try:
+                key = f.read_text(encoding="utf-8").strip()
+            except OSError:
+                continue
+            if key:
+                out[f.stem.lower()] = key
+    except OSError:
+        pass
+    return out
+
+
+def whose(folder, key) -> str:
+    """Whose key this is in that home, or "" -- compared in constant time and
+    against every candidate, like the room's own door."""
+    key = (key or "").strip()
+    found = ""
+    for name, mine in keys_of(folder).items():
+        if len(key) == len(mine) and secrets.compare_digest(key, mine):
+            found = found or name
+    return found if key else ""
+
+
+def owner_key(folder) -> str:
+    return keys_of(folder).get(str(identity(folder).get("owner") or "").lower(), "")
+
+
+def mint_owner_key(folder) -> str:
+    """The owner's key in that home, made if it is missing and kept if it is
+    not -- the same file, and the same promise, as people.mint: a paired
+    phone is never un-paired by this."""
+    have = owner_key(folder)
+    owner = str(identity(folder).get("owner") or "").lower()
+    if have or not people_name_ok(owner):
+        return have
+    path = Path(folder) / "data" / "people" / (owner + ".token")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(secrets.token_hex(32), encoding="utf-8")
+    os.replace(tmp, path)
+    return owner_key(folder)
+
+
+def people_name_ok(name) -> bool:
+    import re
+    return bool(re.match(r"^[a-z0-9][a-z0-9_-]{0,31}$", name or ""))
+
+
+# -- making one ---------------------------------------------------------------
 
 def free_port(start=8788) -> int:
-    """A port no room on this install uses and nothing is listening on."""
-    used = set(setup.TAKEN)
+    """A port no room on this install uses, that is not the manager's, and
+    that nothing is listening on."""
+    used = set(setup.TAKEN) | {front()[1]}
     for p in known():
         port = identity(p).get("port")
         if isinstance(port, int):
@@ -186,14 +288,20 @@ def create(name, folder) -> dict:
     for p in known():
         if identity(p).get("slug") == slug:
             raise Refused(identity(p).get("name", slug) + " already answers to that name on "
-                          "this machine; two rooms of one name would share a browser key. "
-                          "Choose another name.")
-    ident = setup.make(folder, name, home.OWNER_NAME, free_port(), owner_id=home.OWNER,
-                       timezone=home.IDENTITY.get("timezone") or "UTC")
-    # It thinks through what this room thinks through until someone changes
-    # it under its own Settings -- a new room with no working mind is a room
-    # whose first line breaks.
-    mind = home.settings("provider.json")
+                          "this machine; two of one name would share an address and a "
+                          "browser key. Choose another name.")
+    # Whom it works for and when its day is, from the first assistant on the
+    # shelf -- the same person, on the same machine.
+    first = known()
+    elder = identity(first[0]) if first else dict(home.IDENTITY)
+    owner = str(elder.get("owner") or home.OWNER)
+    owner_name = ((elder.get("people") or {}).get(owner) or {}).get("called") or home.OWNER_NAME
+    ident = setup.make(folder, name, owner_name, free_port(), owner_id=owner,
+                       timezone=elder.get("timezone") or "UTC")
+    # It thinks through what the first one thinks through until someone
+    # changes it under its own Settings -- a new room with no working mind is
+    # a room whose first line breaks.
+    mind = _settings(first[0], "provider.json") if first else {}
     kept = {k: mind[k] for k in MIND_KEYS if k in mind}
     if kept:
         (folder / "data" / "provider.json").write_text(
@@ -202,67 +310,12 @@ def create(name, folder) -> dict:
     return entry(folder)
 
 
-def _pythonw() -> str:
-    exe = Path(sys.executable)
-    quiet = exe.with_name("pythonw.exe")
-    return str(quiet if quiet.exists() else exe)
-
-
-def start(folder) -> bool:
-    """Wake a known home's room under its own icon, detached from this one,
-    so it outlives a restart of the room that asked. True if it was already
-    awake."""
-    folder = Path(folder).resolve()
-    if not any(_same(folder, p) for p in known()):
-        raise Refused("that folder is not one of this install's assistants")
-    ident = identity(folder)
-    if listening(ident.get("port")):
-        return True
-    # Nothing of this room's own running rides along: the new one reads its
-    # home from ASSISTANT_HOME and nothing else of ours.
-    env = {k: v for k, v in os.environ.items() if not k.upper().startswith("ASSISTANT_")}
-    env["ASSISTANT_HOME"] = str(folder)
-    flags = (getattr(subprocess, "DETACHED_PROCESS", 0)
-             | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
-    breakaway = getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0)
-    for extra in (breakaway, 0):
-        try:
-            subprocess.Popen([_pythonw(), str(START)], cwd=str(home.CODE), env=env,
-                             creationflags=flags | extra, close_fds=True,
-                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                             stderr=subprocess.DEVNULL)
-            return False
-        except OSError:
-            if not extra:
-                raise
-    return False
-
-
-def open_url(folder, wait=45.0) -> str:
-    """The address that walks this browser into another home's room: started
-    if it is asleep, and carrying its owner's key once, which the room moves
-    into a cookie and out of the address bar at once. For the desk only --
-    the caller checks."""
-    folder = Path(folder).resolve()
-    if _same(folder, home.HOME):
-        raise Refused("that is this room")
-    start(folder)
-    ident = identity(folder)
-    port = ident.get("port")
-    token = folder / "data" / "people" / (str(ident.get("owner")) + ".token")
-    deadline = time.monotonic() + wait
-    while time.monotonic() < deadline:
-        if listening(port):
-            try:
-                key = token.read_text(encoding="utf-8").strip()
-            except OSError:
-                key = ""
-            if key:
-                return "http://localhost:" + str(port) + "/?k=" + key
-        time.sleep(0.5)
-    raise Refused((ident.get("name") or "it") + " did not come up within "
-                  + str(int(wait)) + " seconds. What it said is in "
-                  + str(folder / "logs"))
+def _settings(folder, name) -> dict:
+    try:
+        got = json.loads((Path(folder) / "data" / name).read_text(encoding="utf-8"))
+        return got if isinstance(got, dict) else {}
+    except (OSError, ValueError):
+        return {}
 
 
 def browse(start_in=None):
@@ -279,7 +332,7 @@ def browse(start_in=None):
         try:
             got = filedialog.askdirectory(
                 parent=root, mustexist=False,
-                initialdir=str(start_in or listing()["default_parent"]),
+                initialdir=str(start_in or default_parent()),
                 title="Where should the new assistant live?")
         finally:
             root.destroy()
@@ -289,6 +342,10 @@ def browse(start_in=None):
 
 
 if __name__ == "__main__":
+    bind, port = front()
+    print("the manager answers on " + bind + ":" + str(port))
     for e in listing()["homes"]:
-        print(("* " if e["current"] else "  ") + e["name"].ljust(16) + " port "
-              + str(e["port"]).ljust(6) + ("awake " if e["awake"] else "asleep") + "  " + e["home"])
+        print("  " + e["name"].ljust(16) + " /" + (e["slug"] + "/").ljust(12) + " port "
+              + str(e["port"]).ljust(6)
+              + ("awake  " if e["awake"] else "stopped" if e["stopped"] else "asleep ")
+              + "  " + e["home"])

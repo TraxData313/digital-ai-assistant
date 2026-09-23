@@ -1,18 +1,16 @@
 """The assistant's face: which picture it wears, kept in its own artwork.
 
 A picture uploaded or chosen here is kept in `artwork/portraits/`, and the
-face is drawn from it: the round portrait at the top of the page, the icons a
-phone keeps on its home screen, and the two icons in the corner of the screen
-(awake, and put down). All of it is written into the home's own `artwork/`,
-never beside the code.
+face is drawn from it: the round portrait at the top of the page and in the
+manager's list, the icons a phone keeps on its home screen, and the browser
+tab's icon (awake, and a grey one for down). All of it is written into the
+home's own `artwork/`, never beside the code.
 
 The face the home wore before the first change is kept whole in
 `artwork/portraits/original/`, file for file, with a note of which files were
 its own, so choosing it again gives back exactly that: its own pictures put
 back, and any it never had taken away again so the defaults beside the code
-show through -- a hand-made icon is not redrawn from a crop of itself. The
-icon in the corner is read when it starts, so a new face shows there the next
-time it does.
+show through -- a hand-made icon is not redrawn from a crop of itself.
 """
 
 import io
@@ -56,7 +54,7 @@ def _url(path: Path) -> str:
         stamp = str(int(path.stat().st_mtime))
     except OSError:
         stamp = "0"
-    return "/artwork/" + quote(rel) + "?v=" + stamp
+    return "artwork/" + quote(rel) + "?v=" + stamp
 
 
 def _selected() -> str:
@@ -87,12 +85,12 @@ def status() -> dict:
     items.append({"id": ORIGINAL_ID, "name": "the original face",
                   # Before the first change the original is simply what is
                   # worn, wherever it is served from.
-                  "url": _url(original) if original else "/artwork/portrait.png"})
+                  "url": _url(original) if original else "artwork/portrait.png"})
     for p in _pictures():
         items.append({"id": p.name, "name": p.stem, "url": _url(p)})
     face = _current_face()
     current = (_url(face) if ARTWORK.resolve() in face.resolve().parents
-               else "/artwork/portrait.png")
+               else "artwork/portrait.png")
     return {"selected": _selected(), "current": {"url": current},
             "items": items, "max_bytes": MAX_BYTES}
 

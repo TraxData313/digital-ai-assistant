@@ -1,0 +1,16 @@
+{
+  "name": "Digital Assistant Manager",
+  "short_name": "Assistants",
+  "description": "Every assistant on this machine, and a way into each.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#17130f",
+  "theme_color": "#17130f",
+  "icons": [
+    { "src": "/_/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/_/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

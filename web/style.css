@@ -17,7 +17,7 @@
   /* The server replaces this one value from its wallpaper catalogue.  Keeping
      the original here means the room still opens as the familiar garden
      while its first Settings request is on the way. */
-  --room-wallpaper: url("/artwork/wallpaper.png");
+  --room-wallpaper: url("artwork/wallpaper.png");
   --glass-solid: rgba(28, 25, 22, 0.92);
   --line: rgba(232, 226, 219, 0.16);
   --ink: #f0ebe4;
@@ -1254,6 +1254,7 @@ a.res-val:hover { color: var(--ink); }
   display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
   width: 100%; text-align: left; padding: 9px 11px; border: 0; border-radius: 8px;
   background: none; color: var(--ink); font: inherit; font-size: 16.5px; cursor: pointer;
+  text-decoration: none; box-sizing: border-box;
 }
 .assistant-item:hover, .assistant-item:focus-visible { background: rgba(255, 255, 255, .07); outline: none; }
 .assistant-item b { font-weight: 600; }

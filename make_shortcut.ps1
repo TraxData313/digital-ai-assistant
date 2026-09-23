@@ -1,6 +1,7 @@
 <#
-    Puts the room on the Desktop, and into the machine's own waking-up, so it
-    is there without a terminal and without being asked for.
+    Puts the Digital Assistant Manager on the Desktop, and into the machine's
+    own waking-up, so every assistant is there without a terminal and without
+    being asked for.
 
         .\make_shortcut.ps1                 # Desktop
         .\make_shortcut.ps1 -Startup        # and started at log-in
@@ -14,8 +15,10 @@
     reinstalling anything.
 
     Both shortcuts open the same icon in the corner; only the Desktop one
-    passes --open, so double-clicking it puts the room on screen and logging
-    in does not throw a browser tab at anybody.
+    passes --open, so double-clicking it puts the manager on screen and
+    logging in does not throw a browser tab at anybody. A shortcut an older
+    install named for one assistant, pointing at this same start.pyw, is
+    taken away as the new one is written.
 #>
 
 param(
@@ -29,11 +32,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repo = $PSScriptRoot
-# Named for the home this install runs, so two assistants on one machine get
-# two shortcuts rather than one overwriting the other.
+# One shortcut for the whole install: the manager holds every assistant.
+$name = "Digital Assistant Manager.lnk"
+# The name an older install gave its shortcut, after its one assistant.
 $info = python -m server.home --json | ConvertFrom-Json
-if (-not $info.real) { throw "No home is chosen yet. Run: python -m server.setup <folder>" }
-$name = "$($info.app_name).lnk"
+$legacy = if ($info.real) { "$($info.app_name).lnk" } else { $null }
 
 function Say($msg, $colour = "Gray") { Write-Host $msg -ForegroundColor $colour }
 
@@ -58,7 +61,7 @@ if ($Remove) {
             Say "removed       : $path" "Yellow"
         }
     }
-    Say "$($info.name) is still awake if it was awake. This only took the icons away." "Gray"
+    Say "The assistants are still awake if they were awake. This only took the icons away." "Gray"
     return
 }
 
@@ -78,7 +81,7 @@ if (-not (Test-Path $pythonw)) {
 }
 
 $launcher = Join-Path $repo "start.pyw"
-$icon = $info.icon
+$icon = Join-Path $repo "artwork\manager\manager.ico"
 if (-not (Test-Path $launcher)) { throw "No start.pyw in $repo" }
 
 Say "opens         : $launcher"
@@ -98,13 +101,23 @@ foreach ($place in $places) {
     $link.Arguments = "`"$launcher`""
     if ($place.open) { $link.Arguments += " --open" }
     $link.WorkingDirectory = $repo
-    $link.Description = "$($info.app_name) -- the room, and the icon that keeps it"
+    $link.Description = "Digital Assistant Manager -- every assistant here, and the icon that keeps them"
     if (Test-Path $icon) { $link.IconLocation = "$icon,0" }
     $link.Save()
     Say "shortcut      : $path" "Green"
+    if ($legacy -and $legacy -ne $name) {
+        $old = Join-Path $place.dir $legacy
+        if (Test-Path $old) {
+            $was = $shell.CreateShortcut($old)
+            if ($was.Arguments -like "*$launcher*") {
+                Remove-Item $old -Force
+                Say "replaced      : $old" "Yellow"
+            }
+        }
+    }
 }
 
 if (-not $WhatIf -and ($Startup -or $All)) {
     Say ""
-    Say "$($info.name) will be up when you log in. Nothing opens; look for its icon in the corner." "Gray"
+    Say "The manager will be up when you log in. Nothing opens; look for its icon in the corner." "Gray"
 }

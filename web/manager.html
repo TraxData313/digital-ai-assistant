@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#17130f">
+<title>{{app}}</title>
+<!-- Every address here starts at the root: this page is also what an
+     assistant's own address shows while it is down, at /<slug>/. -->
+<link rel="icon" href="/_/icon.ico">
+<link rel="manifest" href="/_/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/_/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Assistants">
+<link rel="stylesheet" href="/_/manager.css">
+</head>
+<body data-focus="{{focus}}">
+  <main>
+    <header>
+      <img src="/_/icon-192.png" alt="" class="mark">
+      <h1>{{app}}</h1>
+    </header>
+    <!-- Shown when this page stands in for an assistant that is down. -->
+    <section id="focus" class="focus" hidden></section>
+    <section id="list" class="list" aria-live="polite"><p class="quiet">looking…</p></section>
+    <p id="problem" class="problem" role="alert" hidden></p>
+    <div class="actions"><button id="new" type="button" hidden>+ New assistant</button></div>
+  </main>
+  <dialog id="new-dialog" aria-labelledby="new-title">
+    <h2 id="new-title">A new assistant</h2>
+    <p class="quiet">An empty folder becomes its home: its memory, its Spark, its pictures and its
+      backups, kept apart from the others. It thinks through the same model as the first assistant
+      here until you change that in its own Settings.</p>
+    <label class="field">Name<input id="na-name" type="text" maxlength="40" autocomplete="off" spellcheck="false"></label>
+    <label class="field">Folder<span class="field-row"><input id="na-folder" type="text" autocomplete="off" spellcheck="false"><button id="na-browse" type="button" hidden>Browse…</button></span></label>
+    <p id="na-note" class="note" role="status">Before talking to it much, write its Spark:
+      data\spark.md in its folder, the text it reads as itself.</p>
+    <div class="dialog-actions">
+      <button id="na-create" type="button" disabled>Create and open</button>
+      <button id="na-cancel" type="button" class="plain">cancel</button>
+    </div>
+  </dialog>
+  <script src="/_/manager.js"></script>
+</body>
+</html>

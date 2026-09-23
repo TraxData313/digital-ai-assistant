@@ -90,7 +90,7 @@ const extract = (start, end) => {
     });
     assert.equal(check.count,2,'100 fragments and setup produce only two top-level actions');
     assert.deepEqual(check.chat,[300,360,170,true],'live polling retains main/internal scroll and open state');
-    assert.equal(check.link,'/api/native-log?row=123');
+    assert.equal(check.link,'api/native-log?row=123');
     assert.equal(check.anchored,true,'content growth above the reader retains the visible action');
     assert.equal(check.hidden,0,'simple view still hides all native details');
     assert.deepEqual(check.settings,[check.top,420,190],'Settings replacement retains both scroll axes without following');

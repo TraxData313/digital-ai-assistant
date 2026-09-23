@@ -27,12 +27,23 @@ match in any commit being pushed.
 
 ## A live room is somebody's
 
-A room answers on its home's port. Never start a second room over the same
-home -- two rooms answer every line twice. To test server code, run a side
-room on a spare port over a *copy* of a store, with no turn loop:
-`OneRoom(("127.0.0.1", 0), Handler)` after pointing `db.DB_PATH` at the
-copy, and never `main()`. The icon in the corner (`server/tray.py`) brings a
-stopped room back, so stopping the room is restarting it.
+Every room is held by the manager (`server/manager.py`, the one icon in the
+corner): it answers on 8787 for all of them, `/` the list and `/<slug>/` a
+room, and each room sits behind it on its home's own port, on loopback. The
+manager brings a stopped room back, so killing a room is restarting it; its
+Stop is the only way down that stays down. Never start a second room over the
+same home -- two rooms answer every line twice; `app.main()` refuses to, by a
+lock on the home, whatever port it was given.
+
+To test server code, run a side room on a spare port over a *copy* of a
+store, with no turn loop: `OneRoom(("127.0.0.1", 0), Handler)` after pointing
+`db.DB_PATH` at the copy, and never `main()`. To look at the manager, run a
+side one with its own list: `ASSISTANT_REGISTRY=<scratch>\homes.json` and
+`python -m server.manager --port <spare> --no-icon`, over made-up homes.
+
+The page asks for everything relative to where it is (`api/state`, not
+`/api/state`), so the same page works at `/ava/` and at `/`. A new URL in
+`web/` or in a server answer the page uses follows that rule.
 
 ## Tests
 

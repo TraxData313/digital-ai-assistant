@@ -57,35 +57,63 @@ git push -u origin HEAD
 ## Run it
 
 ```
-pythonw start.pyw --open     # the icon in the corner; it keeps the room up
-python -m server.app         # or the room in a console, saying everything
+pythonw start.pyw --open     # the Digital Assistant Manager: one icon for every assistant
+python -m server.manager     # the same, in a console
 .\make_shortcut.ps1 -Startup # a Desktop shortcut, and start at login
 ```
 
-The room answers on `http://localhost:<port>`. It refuses to start without a
-home chosen, and refuses to share its port with another room.
+The manager answers on `http://localhost:8787`: `/` lists every assistant,
+and each one's room is at `/<its name>/` -- `http://localhost:8787/ava/`. One
+address, so a phone on the owner's tailnet needs to know only the one. Each
+room still runs as its own process with its own store, on its home's own port
+on loopback, where nothing but the manager can reach it.
+
+`python -m server.app` still runs one room on its own, saying everything in a
+console. It refuses to start without a home chosen, and refuses to run twice
+over the same home.
 
 ## More than one assistant on a machine
 
-The assistant's name at the top of the page opens a list of every assistant
-this install knows, awake or asleep. Choosing one opens its room in a new tab,
-waking it first if it is asleep; **+ New assistant** asks for a name and a
-folder, makes the home there, and opens it. Each runs as its own room on its
-own port under its own icon, with its own store; they share only the code and
-the keys in `server/passwords.py`. A new one thinks through the same model as
-the room that made it until its own Settings say otherwise. Write its Spark
-(`data\spark.md` in its folder) before talking to it much.
+The manager's page, and the name at the top of every room, list every
+assistant this install knows. From there:
 
-The list is `homes.json` beside the code, per machine and never committed.
-Making and waking rooms is for the owner at the desk; from a phone the list
-says so. `python -m server.homes` prints it.
+- **Open** walks into its room.
+- **Stop** puts it down and keeps it down -- across a restart of the manager
+  and of the machine -- until **Start**. A stopped assistant does not answer,
+  dream or run its jobs, and anything it had sent out working stops with it.
+- **Restart** is its own restart, done for it.
+- **+ New assistant** asks for a name and a folder, makes the home there,
+  starts it, and opens it. It thinks through the same model as the first
+  assistant until its own Settings say otherwise, and works for the same
+  person. Write its Spark (`data\spark.md` in its folder) before talking to it
+  much.
+
+The icon in the corner does the same from its menu, and a room that falls
+over is brought back, unless it keeps falling (then it stays down and says
+why). Everything each room says goes to its home's `logs/`; the manager's own
+story to `logs/` beside the code.
+
+The list is `homes.json` beside the code: which folders, which are stopped,
+and the manager's port (`"port"`, 8787 by default). It is per machine and
+never committed. `python -m server.homes` prints it.
+
+### Who gets in
+
+The manager keeps the room's own two walls: a knock must come from this
+machine or from the owner's tailnet, and carry the key of somebody paired
+with one of the assistants. It tells the room behind it who really knocked,
+with a secret it hands each room when it starts it; a room refuses those
+headers from anyone else. Somebody paired with one assistant is let into
+another only if they are paired there too. Starting, stopping and making
+assistants is for the owner, from the desk or their phone; the folder dialog
+opens at the desk only.
 
 ## Its face
 
 Tapping the portrait opens the portrait and the room's background. A picture
 uploaded there is kept in the home's `artwork/portraits/` and the face is
-drawn from it: the round portrait, the icons a phone keeps, and both icons in
-the corner of the screen (the corner one changes the next time it starts). The
+drawn from it: the round portrait (in the room and in the manager's list),
+the icons a phone keeps, and the browser tab's icon. The
 face the home had before is kept file for file in
 `artwork/portraits/original/`, and choosing it gives exactly that back.
 

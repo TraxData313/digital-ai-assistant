@@ -63,7 +63,7 @@ assert.doesNotMatch(extract('function renderLive()', '// --- the header'), /html
       return original === $('native-stop-live') && document.activeElement === original;
     }), true, 'polling preserves the button and keyboard focus');
     await page.keyboard.press('Enter');
-    assert.deepEqual(await page.evaluate(() => window.posts), [{url: '/api/native-tools/cancel', body: {}}]);
+    assert.deepEqual(await page.evaluate(() => window.posts), [{url: 'api/native-tools/cancel', body: {}}]);
     await page.evaluate(() => {window.rejectCancel = true;});
     await stop.click();
     assert.deepEqual(await page.evaluate(() => window.errors), ['Synthetic cancellation failure']);

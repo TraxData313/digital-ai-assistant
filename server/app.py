@@ -582,11 +582,14 @@ HOME_ICONS = ("icon-192.png", "icon-512.png", "icon-maskable-512.png")
 NAMED_PAGES = ("index.html", "manifest.webmanifest")
 
 
-def with_identity(body: bytes, rel: str = "index.html") -> bytes:
-    """The page names nobody on disk; the room tells it who it is. Escaped
-    for what it lands in: HTML for the page, a JSON string for the manifest."""
+def with_identity(body: bytes, rel: str = "index.html", prefix: str = "") -> bytes:
+    """The page names nobody on disk; the room tells it who it is, and where
+    it sits: "/" reached directly, "/ava/" behind the manager. Escaped for
+    what it lands in: HTML for the page, a JSON string for the manifest."""
     esc = html.escape if rel.endswith(".html") else (lambda s: json.dumps(s)[1:-1])
-    ident = json.dumps(home.for_page(), ensure_ascii=False).replace("</", "<\\/")
+    page = dict(home.for_page(), base=prefix + "/", managed=bool(prefix),
+                manager_port=homes.front()[1])
+    ident = json.dumps(page, ensure_ascii=False).replace("</", "<\\/")
     text = body.decode("utf-8")
     options = "\n".join(
         '            <option value="' + p + '">' + html.escape(home.CALLED[p])
@@ -595,6 +598,7 @@ def with_identity(body: bytes, rel: str = "index.html") -> bytes:
                 .replace("{{people_options}}", options)
                 .replace("{{person_hidden}}",
                          " hidden" if len(home.HOUSEHOLD) == 1 else "")
+                .replace("{{base}}", esc(prefix + "/"))
                 .replace("{{app_name}}", esc(home.APP_NAME))
                 .replace("{{title}}", esc(home.TITLE))
                 .replace("{{name}}", esc(home.NAME)))
@@ -751,19 +755,63 @@ class Handler(BaseHTTPRequestHandler):
     COOKIE = home.COOKIE
     COOKIE_AGE = 365 * 24 * 3600
 
-    def _peer(self):
-        """The caller's source address, or None if it cannot be read as one. A
-        v4 address arriving on a dual-stack socket wears a `::ffff:` prefix and
-        a link-local v6 wears a `%scope` tail; both are stripped, because the
-        range test below has to see the address and not its clothing."""
-        addr = (self.client_address[0] if self.client_address else "") or ""
-        addr = addr.split("%")[0]
+    @staticmethod
+    def _address(addr):
+        """An address as an address, or None. A v4 address arriving on a
+        dual-stack socket wears a `::ffff:` prefix and a link-local v6 wears a
+        `%scope` tail; both are stripped, because the range test below has to
+        see the address and not its clothing."""
+        addr = str(addr or "").split("%")[0]
         if addr.lower().startswith("::ffff:"):
             addr = addr[7:]
         try:
             return ipaddress.ip_address(addr)
         except ValueError:
             return None
+
+    # -- behind the manager ------------------------------------------------
+    # The manager (server/manager.py) is the one door that faces out, and
+    # every room sits behind it on loopback. So what it passes on arrives
+    # *from* loopback, which on its own would read as the desk. It says who
+    # really knocked in these headers, and they count only with the key it
+    # handed this room when it started it. A room started any other way has
+    # no key and refuses anything wearing them: shut, not open, when unsure.
+    VOUCHED = ("X-Assistant-Manager", "X-Assistant-Peer", "X-Assistant-Who",
+               "X-Assistant-Prefix")
+
+    def _manager_said(self):
+        """None if this request did not come through the manager; False if it
+        says it did and cannot prove it; otherwise what the manager said."""
+        if not any(self.headers.get(h) for h in self.VOUCHED):
+            return None
+        mine = os.environ.get("ASSISTANT_MANAGER_KEY") or ""
+        said = self.headers.get("X-Assistant-Manager") or ""
+        near = self._address(self.client_address[0] if self.client_address else "")
+        if (not mine or near is None or not near.is_loopback
+                or len(said) != len(mine) or not secrets.compare_digest(said, mine)):
+            return False
+        prefix = self.headers.get("X-Assistant-Prefix") or ""
+        if prefix != "/" + home.SLUG:
+            return False
+        return {"peer": self.headers.get("X-Assistant-Peer") or "",
+                "who": (self.headers.get("X-Assistant-Who") or "").strip().lower(),
+                "prefix": prefix}
+
+    def _prefix(self):
+        """Where this room sits in the manager's address -- "/ava" -- or ""
+        when it was reached directly."""
+        said = self._manager_said()
+        return said["prefix"] if said else ""
+
+    def _peer(self):
+        """Who knocked: the socket's own address, or the one the manager
+        vouched for. None if it cannot be read, or the vouching is false."""
+        said = self._manager_said()
+        if said is False:
+            return None
+        if said:
+            return self._address(said["peer"])
+        return self._address(self.client_address[0] if self.client_address else "")
 
     def _key_offered(self):
         """The key this request carries, and whether it came in the URL. `?k=`
@@ -793,9 +841,15 @@ class Handler(BaseHTTPRequestHandler):
             return "", ""
         key, fresh = self._key_offered()
         who = people.whose(key)
-        if not who:
-            return "", ""
-        return who, (key if fresh else "")
+        if who:
+            return who, (key if fresh else "")
+        # No key of this room's own, but the manager knows the person from
+        # another room's key on this machine. Taken only for somebody paired
+        # here too: being let into one assistant is never a way into another.
+        said = self._manager_said()
+        if said and said["who"] and said["who"] in people.everyone():
+            return said["who"], ""
+        return "", ""
 
     def _shut(self):
         """403, and nothing else. No body, no reason, no hint that the address
@@ -820,7 +874,7 @@ class Handler(BaseHTTPRequestHandler):
         """A good key came in the URL: keep it in a cookie and send the device
         back to the bare address, so the key is not left in the bar, in the
         history, or in whatever gets pasted next."""
-        bare = urlparse(self.path).path or "/"
+        bare = self._prefix() + (urlparse(self.path).path or "/")
         self.send_response(302)
         self.send_header("Location", bare)
         self.send_header(
@@ -953,14 +1007,18 @@ class Handler(BaseHTTPRequestHandler):
                 return self._shut()
             addr = people.my_tailnet_address()
             key = people.read_token(home.OWNER)
+            # Behind the manager the phone knocks on the manager's port, at
+            # this room's place in it; reached directly, on this room's own.
+            prefix = self._prefix()
+            door = str(homes.front()[1] if prefix else PORT) + prefix
             return self._json({
                 "tailnet": addr,
-                "url": ("http://" + addr + ":" + str(PORT) + "/?k=" + key)
+                "url": ("http://" + addr + ":" + door + "/?k=" + key)
                        if (addr and key) else "",
                 # If Tailscale is not up, say the shape rather than a blank:
                 # the owner can fill in the address from the Tailscale app.
                 "template": ("http://<this machine's tailscale address>:"
-                             + str(PORT) + "/?k=<the key, once Tailscale is up>"),
+                             + door + "/?k=<the key, once Tailscale is up>"),
             })
 
         if path == "/api/native-log":
@@ -1087,14 +1145,6 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/portraits":
             return self._json(portraits.status())
 
-        # The other assistants on this machine. Read at the desk only: the
-        # list carries folders, and everything it offers -- waking a room,
-        # making one -- is done at this machine.
-        if path == "/api/homes":
-            if not self._from_the_desk():
-                return self._json({"error": "the other assistants are opened at the desk"}, 403)
-            return self._json(homes.listing())
-
         # Who it can think through: the services, which keys are set (never
         # the keys), every model with its live price, and what is left to
         # spend. Read on opening Settings, not on the poll -- it can touch
@@ -1161,7 +1211,7 @@ class Handler(BaseHTTPRequestHandler):
             ctype = TYPES.get(target.suffix, "application/octet-stream")
             body = target.read_bytes()
             if rel in NAMED_PAGES:
-                body = with_identity(body, rel)
+                body = with_identity(body, rel, self._prefix())
             return self._send(200, body, ctype)
         return self._send(404, b"not here", "text/plain")
 
@@ -1593,27 +1643,6 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": "the portrait was not changed: "
                                    + type(exc).__name__ + ": " + str(exc)}, 500)
 
-        # Making and waking the other assistants: the owner, at the desk. A
-        # room is started, a folder dialog opens on this screen, and a key
-        # crosses to the browser in an address -- none of it from the road.
-        if self.path.startswith("/api/homes/"):
-            if self._who != home.OWNER or not self._from_the_desk():
-                return self._json({"error": "other assistants are made and opened by "
-                                   + home.OWNER_NAME + ", at the desk"}, 403)
-            try:
-                if self.path == "/api/homes/new":
-                    made = homes.create(body.get("name"), body.get("folder"))
-                    return self._json({"home": made, "url": homes.open_url(made["home"])})
-                if self.path == "/api/homes/open":
-                    return self._json({"url": homes.open_url(body.get("home"))})
-                if self.path == "/api/homes/browse":
-                    return self._json({"folder": homes.browse(body.get("from"))})
-            except homes.Refused as exc:
-                return self._json({"error": str(exc)}, 400)
-            except OSError as exc:
-                return self._json({"error": type(exc).__name__ + ": " + str(exc)}, 500)
-            return self._json({"error": "no such thing"}, 404)
-
         # The models folder under Settings. Choosing one moves whatever is
         # in the old place into it, in the background; the poll shows the
         # count. Refusals -- a relative path, a drive that is not here, a
@@ -1766,6 +1795,27 @@ class OneRoom(ThreadingHTTPServer):
     allow_reuse_address = 0
 
 
+_ROOM_LOCK = {}
+
+
+def only_room_over_this_home() -> bool:
+    """A named mutex for this home, held until the process ends -- and so
+    let go by a crash as surely as by a clean exit. Not inheritable, so a
+    hand the room sends out does not keep it after the room is gone."""
+    if os.name != "nt":
+        return True
+    import ctypes
+    import hashlib
+    from ctypes import wintypes
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.CreateMutexW.restype = wintypes.HANDLE
+    k32.CreateMutexW.argtypes = [wintypes.LPVOID, wintypes.BOOL, wintypes.LPCWSTR]
+    where = os.path.normcase(str(home.HOME.resolve())).encode("utf-8")
+    name = "Local\\AssistantRoom-" + hashlib.sha1(where).hexdigest()[:20]
+    _ROOM_LOCK["h"] = k32.CreateMutexW(None, False, name)
+    return ctypes.get_last_error() != 183    # ERROR_ALREADY_EXISTS
+
+
 def main():
     # A room runs a home made for it, never the code folder. The code folder
     # carries a test identity so the benches can run, and a room started on
@@ -1775,6 +1825,15 @@ def main():
         print("  Choose one (or make a new assistant in an empty folder):")
         print("      python -m server.setup <folder>\n")
         raise SystemExit(2)
+
+    # One room over one home, whatever port it was given. The port used to be
+    # the whole of this guard, and it stopped being enough the day a home's
+    # port could change: two rooms on two ports over one store are two of the
+    # assistant just the same.
+    if not only_room_over_this_home():
+        print(f"\n  {home.NAME} is already awake in another room, over this same home.")
+        print("  This one is closing rather than becoming a second one.\n")
+        raise SystemExit(1)
 
     conn = db.connect()
     conn.close()

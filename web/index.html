@@ -10,13 +10,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="theme-color" content="#17130f">
 <title>{{app_name}}</title>
-<link rel="icon" href="/artwork/icon.ico">
-<link rel="manifest" href="/manifest.webmanifest">
-<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="icon" href="artwork/icon.ico">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="{{name}}">
-<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="style.css">
 <!-- Whose room this is, filled in by the room when it serves the page. -->
 <script>window.ASSISTANT = {{identity_json}};</script>
 </head>
@@ -29,7 +29,7 @@
       <button id="portrait-button" class="portrait-button" type="button"
               title="change the portrait or the background"
               aria-label="Change {{name}}'s portrait or background">
-        <img id="portrait" src="/artwork/portrait.png" alt="{{name}}">
+        <img id="portrait" src="artwork/portrait.png" alt="{{name}}">
       </button>
       <div class="head-left">
         <!-- The name opens the list of assistants on this machine: switch
@@ -136,9 +136,9 @@
   <dialog id="face-dialog" class="room-dialog" aria-labelledby="face-title"></dialog>
   <dialog id="new-assistant-dialog" class="room-dialog" aria-labelledby="new-assistant-title"></dialog>
 
-  <script src="/app.js"></script>
-  <script src="/codex_tasks.js"></script>
-  <script src="/voice_selection.js"></script>
-  <script src="/voice.js"></script>
+  <script src="app.js"></script>
+  <script src="codex_tasks.js"></script>
+  <script src="voice_selection.js"></script>
+  <script src="voice.js"></script>
 </body>
 </html>

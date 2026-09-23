@@ -2,16 +2,16 @@
   "name": "{{app_name}}",
   "short_name": "{{name}}",
   "description": "{{name}}'s room, and the conversation in it.",
-  "id": "/",
-  "start_url": "/",
-  "scope": "/",
+  "id": "{{base}}",
+  "start_url": "{{base}}",
+  "scope": "{{base}}",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#17130f",
   "theme_color": "#17130f",
   "icons": [
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }

@@ -119,7 +119,7 @@
     controls.retry.hidden=true;
     loadingVoices=(async()=>{
       try {
-        const response=await fetch('/api/voice/voices'), result=await response.json();
+        const response=await fetch('api/voice/voices'), result=await response.json();
         if(!response.ok)throw Error(result.error||'Could not load voices.');
         if(!Array.isArray(result.voices)||!result.voices.length)throw Error('No supported voices are available.');
         voices=result.voices;selected=result.defaultVoice;
@@ -170,7 +170,7 @@
     choiceState();
   }
   async function loadApp() {
-    try {absorbVoice(await (await fetch('/api/voice')).json());}
+    try {absorbVoice(await (await fetch('api/voice')).json());}
     catch {/* A reading we could not take is not a reading we invent. */}
   }
   function pollApp() {
@@ -178,7 +178,7 @@
     appTimer=backend==='local'?setInterval(loadApp,appPollMs):null;
   }
   async function api(action,body,keepalive=false) {
-    const response=await fetch('/api/voice/'+action,{method:'POST',keepalive,
+    const response=await fetch('api/voice/'+action,{method:'POST',keepalive,
       headers:{'Content-Type':'application/json','X-Assistant-Voice':'1'},body:JSON.stringify(body)});
     const result=await response.json();
     if(!response.ok){const error=Error(result.error||'The voice connection failed.');error.status=response.status;throw error;}
@@ -370,6 +370,6 @@
   }};
   addEventListener('pagehide',()=>{
     const s=current;if(!s)return;current=null;closeDevices(s);
-    if(s.id)fetch('/api/voice/stop',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json','X-Assistant-Voice':'1'},body:JSON.stringify({session:s.id,events:s.pending.slice(0,100)})}).catch(()=>{});
+    if(s.id)fetch('api/voice/stop',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json','X-Assistant-Voice':'1'},body:JSON.stringify({session:s.id,events:s.pending.slice(0,100)})}).catch(()=>{});
   });
 })();
