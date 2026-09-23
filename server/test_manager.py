@@ -354,6 +354,56 @@ def main():
         code, _, _, got = ask(door_port, "POST", "/_/api/new", me, body={"name": "Cy", "folder": str(scratch / "Cy2")})
         check("a second of the same name is refused in words", code == 400 and "already answers" in got.get("error", ""), got)
 
+        # -- detached, moved, attached again ----------------------------------------------
+        until(lambda: H.look()["phase"] == "awake")
+        (flags / "heron" / "busy").write_text("", encoding="utf-8")
+        until(lambda: H.look()["phase"] == "thinking", 6)
+        code, _, _, got = ask(door_port, "POST", "/_/api/detach", me, body={"slug": "heron"})
+        check("detaching in the middle of a turn asks first", got.get("busy") is True and H.mode == "ours", got)
+        code, _, _, got = ask(door_port, "POST", "/_/api/detach", me, body={"slug": "heron", "anyway": True})
+        (flags / "heron" / "busy").unlink()
+        check("detach", code == 200 and got.get("said") == "detached" and got.get("home") == str(heron), got)
+        check("it is stopped and forgotten", keeper.by_slug("heron") is None and H.mode == "gone"
+              and H.proc.poll() is not None
+              and str(heron) not in json.loads(homes.REGISTRY.read_text(encoding="utf-8"))["homes"], H.mode)
+        code, _, _, _ = ask(door_port, "GET", "/heron/", me)
+        check("and its address is nobody's now", code == 404, code)
+        check("its folder is left as it was", (heron / "identity.json").is_file() and (heron / "data").is_dir())
+        moved = scratch / "moved" / "Heron"
+        moved.parent.mkdir()
+        try:
+            heron.rename(moved)
+            went = True
+        except OSError as exc:
+            went = exc
+        check("and the manager has let go of it: the folder can be moved", went is True, went)
+        code, _, _, got = ask(door_port, "POST", "/_/api/attach", me, body={"folder": str(moved)})
+        H2 = keeper.by_slug("heron")
+        check("attached again from where it went", code == 200 and got.get("url") == "/heron/"
+              and H2 is not None and H2.home == moved.resolve(), (code, got))
+        check("and it wakes there", H2 is not None and until(lambda: H2.look()["phase"] == "awake"), H2 and H2.look())
+        code, _, _, e = ask(door_port, "GET", "/heron/api/echo", me)
+        check("at the same address as before", code == 200 and e["path"] == "/api/echo", code)
+        code, _, _, got = ask(door_port, "POST", "/_/api/attach", me, body={"folder": str(scratch / "flags")})
+        check("a folder with no assistant in it is refused in words",
+              code == 400 and "identity.json" in got.get("error", ""), got)
+        code, _, _, got = ask(door_port, "POST", "/_/api/detach", them, body={"slug": "heron"})
+        check("a guest cannot detach one", code == 403 and keeper.by_slug("heron") is not None, (code, got))
+        code, _, _, got = ask(door_port, "POST", "/_/api/attach", them, body={"folder": str(moved)})
+        check("or attach one", code == 403, (code, got))
+        real_pointer = homes._pointer
+        homes._pointer = lambda: finch
+        try:
+            code, _, _, listing = ask(door_port, "GET", "/_/api/list", me)
+            first = {a["slug"]: a["first"] for a in listing["assistants"]}
+            check("the install's own home is marked, so the page offers no Detach",
+                  first.get("finch") is True and first.get("heron") is False, first)
+            code, _, _, got = ask(door_port, "POST", "/_/api/detach", me, body={"slug": "finch"})
+            check("and it is not detached, in words", code == 400 and "stays" in got.get("error", "")
+                  and keeper.by_slug("finch") is F and F.mode == "ours", (code, got))
+        finally:
+            homes._pointer = real_pointer
+
         # -- the marks the scripts read --------------------------------------------------
         mark = json.loads((finch / "data" / "tray.json").read_text(encoding="utf-8"))
         check("each home says who is keeping it", mark.get("tray") == os.getpid()

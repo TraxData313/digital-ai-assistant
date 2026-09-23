@@ -82,6 +82,13 @@ assistant this install knows. From there:
   and of the machine -- until **Start**. A stopped assistant does not answer,
   dream or run its jobs, and anything it had sent out working stops with it.
 - **Restart** is its own restart, done for it.
+- **Detach** stops it and has the manager forget it and let go of its folder,
+  which is left exactly as it is: move it anywhere (another drive, a synced
+  folder), keep it, or delete it yourself. The install's own home -- the one
+  `home.json` points at -- is not detached from here.
+- **Attach an assistant** takes a folder that already holds one (it has
+  `identity.json`) -- one detached and moved, or made elsewhere -- lists it and
+  starts it. If its port is taken here it is given another, and says so.
 - **+ New assistant** asks for a name and a folder, makes the home there,
   starts it, and opens it. It thinks through the same model as the first
   assistant until its own Settings say otherwise, and works for the same

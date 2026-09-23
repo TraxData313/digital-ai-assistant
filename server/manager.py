@@ -54,7 +54,9 @@ LOCK = "DigitalAssistantManager"
 CODE = home.CODE
 WEB = CODE / "web"
 ART = CODE / "artwork" / "manager"
-LOGS = CODE / "logs"
+# Beside the list it keeps: a side manager with a list of its own (a bench)
+# writes its story there, not into the install's.
+LOGS = (homes.REGISTRY.parent / "logs") if os.environ.get("ASSISTANT_REGISTRY") else CODE / "logs"
 KEEP_LOGS_FOR = timedelta(days=14)
 
 # The secret the rooms are handed, and the only proof that a request passed
@@ -150,6 +152,7 @@ class Assistant:
         self.log = None
         self.icon_lock = None
         self.mode = "new"
+        self.misses = 0
         self.thread = None
         # Its own job, kept across its restarts: a hand it sent is not cut
         # off by a restart, and everything of it goes when it is stopped --
@@ -265,6 +268,19 @@ class Assistant:
         if self.icon_lock:
             kernel32.CloseHandle(self.icon_lock)
             self.icon_lock = None
+
+    def let_go(self):
+        """Everything of its folder the manager holds open -- the room's log,
+        its job -- so the folder can be moved once it is detached."""
+        if self.log:
+            try:
+                self.log.close()
+            except OSError:
+                pass
+            self.log = None
+        if self.job:
+            kernel32.CloseHandle(self.job)
+            self.job = None
 
     # -- the room ---------------------------------------------------------------
 
@@ -485,14 +501,24 @@ class Assistant:
                     order = self.orders.get(timeout=1.0)
                 except queue.Empty:
                     continue
-                if order.get("do") == "quit":
+                if order.get("do") in ("quit", "detach"):
+                    detaching = order["do"] == "detach"
                     if mode == "ours":
-                        self.end_everything("the manager is closing, and the room with it")
-                    self.set(phase="down", pid=None, detail="the manager has closed")
+                        self.end_everything(
+                            ("detached at " + (order.get("by") or "someone") + "'s word; "
+                             "the manager lets go of this folder") if detaching
+                            else "the manager is closing, and the room with it")
+                    elif detaching:
+                        self.note("detached at " + (order.get("by") or "someone") + "'s word")
+                    self.set(phase="down", pid=None,
+                             detail="detached" if detaching else "the manager has closed")
                     self.clear_mark()
                     self.release()
+                    if detaching:
+                        self.let_go()
+                    self.mode = "gone" if detaching else mode
                     if order.get("reply"):
-                        order["reply"].put("down")
+                        order["reply"].put("detached" if detaching else "down")
                     return
                 mode, go, said = self.obey(order, mode)
                 self.mode = mode
@@ -620,11 +646,15 @@ class Keeper:
                 here = a.look()
                 if here["phase"] in ("stopped", "held"):
                     continue
-                now = a.ask(timeout=1.5)
+                # A room deep in a turn or loading a model can take a few
+                # seconds to say so; one slow answer is not a room that left.
+                now = a.ask(timeout=4.0)
                 if now is None:
-                    if here["phase"] in ("awake", "thinking", "adopted"):
+                    a.misses += 1
+                    if a.misses >= 2 and here["phase"] in ("awake", "thinking", "adopted"):
                         a.set(phase="waking", detail="it stopped answering")
                     continue
+                a.misses = 0
                 a.answered.set()
                 if now.get("busy"):
                     steps = now.get("steps") or []
@@ -645,6 +675,22 @@ class Keeper:
             return {"busy": True, "name": a.name}
         said = a.order(do, by=by)
         return {"ok": True, "said": said}
+
+    def detach(self, a, by) -> str:
+        """Stop it, forget it, and let go of its folder. Nothing in the
+        folder is touched; attaching it again, from wherever it is by then,
+        puts it back as it was."""
+        if homes.is_first(a.home):
+            raise homes.Refused(a.name + " is this install's own home (home.json points at it), "
+                                "so it stays. Detach the others.")
+        said = a.order("detach", wait=45, by=by)
+        with self._lock:
+            if a in self.assistants:
+                self.assistants.remove(a)
+        homes.forget(a.home)
+        mlog("detached " + a.name + " (" + str(a.home) + ") at " + by + "'s word")
+        self.changed()
+        return said
 
     def open_url(self, a=None) -> str:
         """The address that walks this machine's browser in, carrying the
@@ -932,6 +978,8 @@ class DoorHandler(BaseHTTPRequestHandler):
                 "phase": here["phase"], "word": WORDS.get(here["phase"], here["phase"]),
                 "detail": here["detail"], "since": here["since"], "mode": a.mode,
                 "control": self._may(person, a),
+                # The install's own home stays; the page offers no Detach for it.
+                "first": homes.is_first(a.home),
                 # A folder is shown at the desk only.
                 "home": str(a.home) if desk and self._may(person, a) else ""}
 
@@ -1008,11 +1056,45 @@ class DoorHandler(BaseHTTPRequestHandler):
             mlog("made " + a.name + " at " + str(a.home) + " for " + person)
             return self._json({"slug": a.slug, "name": a.name, "url": "/" + a.slug + "/"})
 
+        # Detach: stopped, forgotten, its folder let go of and left exactly as
+        # it is -- to be moved, kept, or attached again. Attach: an assistant
+        # that already has a home, from wherever that home is now.
+        if path == "/_/api/detach":
+            a = self.keeper.by_slug(str(body.get("slug") or ""))
+            if not a or not self._may(person, a):
+                return self._json({"error": "only the one it works for can detach it"}, 403)
+            if not body.get("anyway") and a.mode == "ours" and a.busy():
+                return self._json({"busy": True, "name": a.name})
+            by = person.title() + ("" if desk else ", from the road")
+            try:
+                said = self.keeper.detach(a, by)
+            except homes.Refused as exc:
+                return self._json({"error": str(exc)}, 400)
+            return self._json({"ok": True, "said": said, "name": a.name,
+                               "home": str(a.home) if desk else ""})
+
+        if path == "/_/api/attach":
+            if not owner:
+                return self._json({"error": "an assistant is attached by the one who keeps them"}, 403)
+            try:
+                got = homes.attach(body.get("folder"))
+            except homes.Refused as exc:
+                return self._json({"error": str(exc)}, 400)
+            except OSError as exc:
+                return self._json({"error": type(exc).__name__ + ": " + str(exc)}, 500)
+            known = self.keeper.by_slug(got["slug"])
+            a = known if known and _same(known.home, got["home"]) else self.keeper.add(got["home"])
+            mlog("attached " + a.name + " from " + str(a.home) + " for " + person)
+            return self._json({"slug": a.slug, "name": a.name, "url": "/" + a.slug + "/",
+                               "note": got.get("note") or ""})
+
         if path == "/_/api/browse":
             if not owner or not desk:
                 return self._json({"error": "the folder dialog opens at the desk"}, 403)
+            title = ("Which folder holds the assistant?" if body.get("for") == "attach"
+                     else "Where should the new assistant live?")
             try:
-                return self._json({"folder": homes.browse(body.get("from"))})
+                return self._json({"folder": homes.browse(body.get("from"), title)})
             except homes.Refused as exc:
                 return self._json({"error": str(exc)}, 400)
 

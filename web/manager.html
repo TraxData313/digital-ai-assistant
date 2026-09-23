@@ -23,8 +23,12 @@
     <!-- Shown when this page stands in for an assistant that is down. -->
     <section id="focus" class="focus" hidden></section>
     <section id="list" class="list" aria-live="polite"><p class="quiet">looking…</p></section>
+    <p id="notice" class="notice" role="status" hidden></p>
     <p id="problem" class="problem" role="alert" hidden></p>
-    <div class="actions"><button id="new" type="button" hidden>+ New assistant</button></div>
+    <div class="actions">
+      <button id="new" type="button" hidden>+ New assistant</button>
+      <button id="attach" type="button" hidden>Attach an assistant…</button>
+    </div>
   </main>
   <dialog id="new-dialog" aria-labelledby="new-title">
     <h2 id="new-title">A new assistant</h2>
@@ -38,6 +42,18 @@
     <div class="dialog-actions">
       <button id="na-create" type="button" disabled>Create and open</button>
       <button id="na-cancel" type="button" class="plain">cancel</button>
+    </div>
+  </dialog>
+  <dialog id="attach-dialog" aria-labelledby="attach-title">
+    <h2 id="attach-title">Attach an assistant</h2>
+    <p class="quiet">An assistant that already has a home -- one that was detached and moved,
+      or made somewhere else. Choose the folder that holds its identity.json; it is started
+      and listed again, with its memory exactly as it left it.</p>
+    <label class="field">Folder<span class="field-row"><input id="at-folder" type="text" autocomplete="off" spellcheck="false"><button id="at-browse" type="button" hidden>Browse…</button></span></label>
+    <p id="at-note" class="note" role="status"></p>
+    <div class="dialog-actions">
+      <button id="at-go" type="button" disabled>Attach and open</button>
+      <button id="at-cancel" type="button" class="plain">cancel</button>
     </div>
   </dialog>
   <script src="/_/manager.js"></script>

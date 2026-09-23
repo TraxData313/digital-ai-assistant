@@ -152,6 +152,48 @@ def main():
     check("a wrong key is nobody's", homes.whose(wren, key[:-1] + ("0" if key[-1] != "0" else "1")) == "")
     check("no key is nobody's", homes.whose(wren, "") == "")
 
+    # -- detached, moved, and attached again ---------------------------------------------
+    homes.set_stopped(wren, True)
+    homes.forget(wren)
+    data = json.loads(homes.REGISTRY.read_text(encoding="utf-8"))
+    check("forgetting takes it off the list and off the stopped list",
+          str(wren) not in data["homes"] and str(wren) not in data["stopped"], data)
+    check("and leaves its folder exactly where it was",
+          (wren / "identity.json").is_file() and (wren / "data" / "spark.md").is_file())
+    moved = scratch / "elsewhere" / "Wren"
+    moved.parent.mkdir()
+    wren.rename(moved)
+    got = homes.attach(str(moved))
+    check("attached again from where it went", got["name"] == "Wren" and got["home"] == str(moved)
+          and not got["note"] and not homes.stopped(moved), got)
+    check("with the same port and the same key", got["port"] == made["port"] and homes.owner_key(moved) == key)
+    check("attaching it twice is the same as once",
+          homes.attach(str(moved))["note"] == "Wren is already here"
+          and json.loads(homes.REGISTRY.read_text(encoding="utf-8"))["homes"].count(str(moved)) == 1)
+    msg = ""
+    try:
+        homes.attach(str(scratch / "busy"))
+    except homes.Refused as exc:
+        msg = str(exc)
+    check("a folder with no assistant in it is refused, saying what to choose", "identity.json" in msg, msg)
+    refused("a relative folder is refused", homes.attach, "elsewhere\\Wren")
+    refused("the code folder is refused", homes.attach, str(home.CODE))
+    refused("no folder is refused", homes.attach, "")
+    twin = scratch / "twin"
+    shutil.copytree(moved, twin)
+    msg = refused("a second one of the same name is refused", homes.attach, str(twin))
+    check("and says to detach the other first", "Detach that one first" in msg, msg)
+    homes.forget(scratch / "Kestrel")
+    ident_k = homes.identity(scratch / "Kestrel")
+    ident_k["port"] = made["port"]
+    (scratch / "Kestrel" / "identity.json").write_text(json.dumps(ident_k), encoding="utf-8")
+    got = homes.attach(str(scratch / "Kestrel"))
+    check("one whose port another here uses is given a free one, and told",
+          got["port"] not in (made["port"], homes.front()[1]) and str(made["port"]) in got["note"]
+          and homes.identity(scratch / "Kestrel")["port"] == got["port"], got)
+    check("keeping everything else in its identity", homes.identity(scratch / "Kestrel")["slug"] == "kestrel")
+    check("the install's own home is never a folder the list can lose", not homes.is_first(moved))
+
     print()
     if FAILED:
         print(str(len(FAILED)) + " failed")

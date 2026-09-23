@@ -89,6 +89,24 @@ def remember(folder) -> None:
         _write(data)
 
 
+def forget(folder) -> None:
+    """Take a home off this install's list, and off the stopped list. Its
+    folder is not touched: it can be moved anywhere and attached again."""
+    folder = Path(folder).resolve()
+    with _LOCK:
+        data = _read()
+        data["homes"] = [p for p in data["homes"] if not _same(p, folder)]
+        data["stopped"] = [p for p in data["stopped"] if not _same(p, folder)]
+        _write(data)
+
+
+def is_first(folder) -> bool:
+    """Whether this is the home home.json runs -- the install's own, which
+    stays on the shelf whatever the list says."""
+    first = _pointer()
+    return bool(first) and _same(first, folder)
+
+
 def stopped(folder) -> bool:
     """Whether someone put this assistant down and meant it to stay down."""
     return any(_same(p, folder) for p in _read()["stopped"])
@@ -310,6 +328,49 @@ def create(name, folder) -> dict:
     return entry(folder)
 
 
+def attach(folder) -> dict:
+    """Put an assistant that already has a home back on the shelf -- one that
+    was detached and moved, say, or made on another machine. Its folder must
+    hold its identity.json. If its port is one another assistant here uses
+    (or the manager's), it is given a free one, and `note` says so."""
+    raw = str(folder or "").strip().strip('"')
+    if not raw:
+        raise Refused("choose the folder the assistant lives in")
+    folder = Path(raw).expanduser()
+    if not folder.is_absolute():
+        raise Refused("the folder must be a whole path, like C:\\Users\\you\\Documents\\Wren")
+    folder = folder.resolve()
+    if _same(folder, home.CODE) or home.CODE in folder.parents:
+        raise Refused("an assistant does not live inside the code folder")
+    ident = identity(folder)
+    if not ident:
+        raise Refused("no assistant lives in " + str(folder) + ": there is no identity.json in it. "
+                      "Choose the folder that holds identity.json and data.")
+    name = str(ident.get("name") or folder.name)
+    others = [p for p in known() if not _same(p, folder)]
+    if len(others) < len(known()):
+        return dict(entry(folder), note=name + " is already here")
+    slug = ident.get("slug")
+    for p in others:
+        if identity(p).get("slug") == slug:
+            raise Refused(identity(p).get("name", slug) + " already answers to that name here; two of "
+                          "one name would share an address and a browser key. Detach that one first.")
+    note = ""
+    used = {front()[1]} | {identity(p).get("port") for p in others}
+    if not isinstance(ident.get("port"), int) or ident["port"] in used:
+        was = ident.get("port")
+        ident["port"] = free_port()
+        path = folder / "identity.json"
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(ident, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+        os.replace(tmp, path)
+        note = (name + "'s port " + str(was) + " is taken here, so it has " + str(ident["port"])
+                + " now (in its identity.json)")
+    remember(folder)
+    set_stopped(folder, False)
+    return dict(entry(folder), note=note)
+
+
 def _settings(folder, name) -> dict:
     try:
         got = json.loads((Path(folder) / "data" / name).read_text(encoding="utf-8"))
@@ -318,7 +379,7 @@ def _settings(folder, name) -> dict:
         return {}
 
 
-def browse(start_in=None):
+def browse(start_in=None, title="Where should the new assistant live?"):
     """A folder picked in Windows' own dialog, on this machine's screen. None
     if it was closed without a choice. One at a time."""
     if not _BROWSING.acquire(blocking=False):
@@ -333,7 +394,7 @@ def browse(start_in=None):
             got = filedialog.askdirectory(
                 parent=root, mustexist=False,
                 initialdir=str(start_in or default_parent()),
-                title="Where should the new assistant live?")
+                title=title)
         finally:
             root.destroy()
         return str(Path(got)) if got else None

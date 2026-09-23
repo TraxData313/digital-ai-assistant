@@ -9,7 +9,10 @@ const LIST = document.getElementById("list");
 const FOCUS_BOX = document.getElementById("focus");
 const PROBLEM = document.getElementById("problem");
 const NEW = document.getElementById("new");
+const ATTACH = document.getElementById("attach");
+const NOTICE = document.getElementById("notice");
 const DIALOG = document.getElementById("new-dialog");
+const ATTACH_DIALOG = document.getElementById("attach-dialog");
 let last = null;
 let acting = "";      // the slug something is being done to, so its buttons wait
 
@@ -47,6 +50,7 @@ function buttons(a) {
     out.push(`<button type="button" data-do="restart" data-slug="${esc(a.slug)}">Restart</button>`);
     out.push(`<button type="button" data-do="stop" data-slug="${esc(a.slug)}">Stop</button>`);
   }
+  if (!a.first) out.push(`<button type="button" class="plain detach" data-do="detach" data-slug="${esc(a.slug)}">Detach</button>`);
   return out.join("");
 }
 
@@ -93,13 +97,14 @@ function render(data) {
     // The room is answering: go in. The address is already the room's own.
     if (a && a.mode === "ours" && UP.has(a.phase)) { location.reload(); return; }
   }
-  const sig = JSON.stringify([all.map((x) => [x.slug, x.title, x.phase, x.word, x.detail, x.mode, x.control, x.home]),
+  const sig = JSON.stringify([all.map((x) => [x.slug, x.title, x.phase, x.word, x.detail, x.mode, x.control, x.home, x.first]),
     data.owner, acting]);
   if (sig === drawn) return;
   drawn = sig;
   LIST.innerHTML = all.length ? all.map(card).join("")
     : `<p class="quiet">No assistants here yet.</p>`;
   NEW.hidden = !data.owner;
+  ATTACH.hidden = !data.owner;
   if (FOCUS) {
     const a = all.find((x) => x.slug === FOCUS);
     FOCUS_BOX.hidden = false;
@@ -117,20 +122,34 @@ async function refresh() {
   }
 }
 
+const VERB = {stop: "Stop", restart: "Restart", detach: "Detach"};
+
+function say(text) {
+  NOTICE.textContent = text;
+  NOTICE.hidden = !text;
+}
+
 async function act(slug, what) {
   const a = ((last && last.assistants) || []).find((x) => x.slug === slug);
   const name = a ? (a.title || a.name) : slug;
   if (what === "stop" && !confirm(`Stop ${name}?\n\nIt will not answer, dream or run its jobs until you start it again.`)) return;
+  if (what === "detach" && !confirm(`Detach ${name}?\n\nThe manager stops ${name} and lets go of its folder. ` +
+      `Nothing in the folder is changed or deleted: move it wherever you like, then attach it again from there.`)) return;
   acting = slug;
+  say("");
   if (last) render(last);
   try {
     let got = await post("/_/api/" + what, {slug});
     if (got.busy) {
-      if (!confirm(`${name} is in the middle of a turn right now.\n\n${what === "stop" ? "Stop" : "Restart"} anyway? The turn will be lost.`)) {
+      if (!confirm(`${name} is in the middle of a turn right now.\n\n${VERB[what] || what} anyway? The turn will be lost.`)) {
         acting = "";
         return refresh();
       }
       got = await post("/_/api/" + what, {slug, anyway: true});
+    }
+    if (what === "detach" && got.ok) {
+      say(`${name} is detached. Its folder is untouched` + (got.home ? `: ${got.home}` : "") +
+        `. Move it wherever you like, then use “Attach an assistant…” to bring ${name} back.`);
     }
   } catch (e) {
     PROBLEM.textContent = String(e.message || e);
@@ -210,8 +229,59 @@ function openNew() {
   nameEl.focus();
 }
 
+// --- one that already has a home ---
+
+function openAttach() {
+  const folderEl = document.getElementById("at-folder"), go = document.getElementById("at-go");
+  const browse = document.getElementById("at-browse"), note = document.getElementById("at-note");
+  let busy = false;
+  folderEl.value = "";
+  browse.hidden = !(last && last.desk);
+  const tell = (text, bad) => { note.textContent = text; note.classList.toggle("bad", !!bad); };
+  const ready = () => { go.disabled = busy || !folderEl.value.trim(); };
+  tell("", false);
+  folderEl.oninput = ready;
+  browse.onclick = async () => {
+    tell("A folder dialog is open on the desk's screen. Choose the assistant's folder.", false);
+    browse.disabled = true;
+    try {
+      const got = await post("/_/api/browse", {from: (last && last.default_parent) || "", for: "attach"});
+      if (got.folder) folderEl.value = got.folder;
+      tell("", false);
+    } catch (e) {
+      tell(String(e.message || e), true);
+    }
+    browse.disabled = false;
+    ready();
+  };
+  go.onclick = async () => {
+    const folder = folderEl.value.trim();
+    if (!folder || busy) return;
+    busy = true;
+    ready();
+    tell("Attaching it and waking it…", false);
+    try {
+      const got = await post("/_/api/attach", {folder});
+      if (got.note) {
+        tell(got.note + ". Opening it…", false);
+        await new Promise((r) => setTimeout(r, 2500));
+      }
+      location.href = got.url;
+    } catch (e) {
+      busy = false;
+      ready();
+      tell(String(e.message || e), true);
+    }
+  };
+  document.getElementById("at-cancel").onclick = () => ATTACH_DIALOG.close();
+  ready();
+  if (!ATTACH_DIALOG.open) ATTACH_DIALOG.showModal();
+  folderEl.focus();
+}
+
 NEW.onclick = openNew;
-DIALOG.addEventListener("click", (e) => { if (e.target === DIALOG) DIALOG.close(); });
+ATTACH.onclick = openAttach;
+for (const d of [DIALOG, ATTACH_DIALOG]) d.addEventListener("click", (e) => { if (e.target === d) d.close(); });
 
 refresh();
 setInterval(() => { if (!document.hidden && !acting) refresh(); }, 2000);

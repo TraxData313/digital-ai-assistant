@@ -56,6 +56,15 @@ h2 { font-size: 1.25rem; margin: 0 0 .6rem; }
 
 .quiet { color: var(--quiet); }
 .problem { color: var(--bad); }
+.notice {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: .7rem .9rem;
+  overflow-wrap: anywhere;
+}
+.buttons .detach { margin-left: auto; color: var(--quiet); }
+.actions { display: flex; flex-wrap: wrap; gap: .6rem; }
 
 .list { display: grid; gap: .8rem; }
 
