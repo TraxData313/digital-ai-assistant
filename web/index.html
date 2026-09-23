@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- viewport-fit=cover lets the page paint under a phone's notch and home bar;
+     the safe-area insets in style.css put the content back inside them.
+     interactive-widget resizes the layout when the keyboard opens, so the
+     composer stays above it. Chrome honours it; the visualViewport handler in
+     app.js covers the browsers that do not. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="theme-color" content="#17130f">
+<title>{{app_name}}</title>
+<link rel="icon" href="/artwork/icon.ico">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="{{name}}">
+<link rel="stylesheet" href="/style.css">
+<!-- Whose room this is, filled in by the room when it serves the page. -->
+<script>window.ASSISTANT = {{identity_json}};</script>
+</head>
+<body class="plain">
+  <div id="app">
+    <header>
+      <!-- The very circle the voice app wears, ring baked in -- one face on
+           every window of the assistant. -->
+      <img id="portrait" src="/artwork/portrait.png" alt="{{name}}">
+      <div class="head-left">
+        <h1>{{title}}</h1>
+        <nav>
+          <button id="tab-chat" class="tab active">Chat</button>
+          <!-- Their own work, beside the talking: projects, the notes box
+               they all write in, and the tasks. Plain like the chat is
+               plain -- plain for everyone. -->
+          <button id="tab-projects" class="tab">Projects</button>
+          <!-- The header is names and places, and a phone has no width to
+               spare. The switches out of plain live at the top of this
+               tab's view, not up here. -->
+          <button id="tab-dev" class="tab">Settings</button>
+          <!-- A break with no size, so the person switch below starts its own
+               line on a phone instead of being pushed off the right edge.
+               Drawn only under 700px; on a desktop it is display:none and the
+               row is exactly what it was. -->
+          <span class="nav-break" aria-hidden="true"></span>
+          <!-- Who is writing. A pick here signs every line sent after it and
+               recolors the whole chat. Free on purpose -- attribution,
+               not a lock. -->
+          <select id="person" class="person-pick" title="who is writing"{{person_hidden}}>
+{{people_options}}
+          </select>
+        </nav>
+        <!-- Live Codex activity, with task controls one tap away. -->
+        <button id="codex-sessions" class="session-indicator" type="button"
+                aria-live="polite" aria-atomic="true" title="Codex sessions — open task controls">none</button>
+        <!-- The automatic memory: which small model, and whether it is loaded.
+             An instrument, so it is drawn only when the gauges are on. -->
+        <div id="recall" class="recall off" title="the automatic memory — details under Settings"></div>
+        <!-- How to pair a phone lives at the top of Settings now: read once
+             when a phone is paired, furniture after. Still only ever drawn
+             on this machine itself -- a key is never shown over the wire. -->
+      </div>
+      <!-- The model, how full its context is, and the plan's own windows -->
+      <div id="usage"></div>
+    </header>
+
+    <main id="main">
+      <section id="view-chat" class="view"></section>
+      <section id="view-projects" class="view hidden"></section>
+      <section id="view-codex" class="view hidden"></section>
+      <section id="view-dev" class="view hidden"></section>
+    </main>
+
+    <footer>
+      <div id="grip" title="drag up for more room, double click to let go"></div>
+      <!-- Pictures waiting to go with the next line. Empty and out of the way
+           until something is pasted, dropped or picked. -->
+      <div id="tray" class="tray hidden"></div>
+      <div class="composer">
+        <!-- A phone has no keyboard to paste from and nothing to drag, so the
+             button is the only way in on a phone. -->
+        <input id="pick" type="file" accept="image/*" multiple hidden>
+        <button id="attach" title="add a picture (or paste, or drag one in)">+</button>
+        <textarea id="input" rows="1" placeholder="say something to {{name}}..."></textarea>
+        <div id="voice-tools" role="group" aria-label="Voice controls" data-state="off" data-backend="local">
+          <!-- Which voice says the assistant's lines: the voice app on this
+               machine, or OpenAI's in this browser. The app owns its own
+               volume, its own microphone and its own picker, so choosing it
+               takes those controls off this bar rather than leaving three
+               switches here that decide nothing. -->
+          <select id="voice-backend" title="which voice says {{name}}'s lines">
+            <option value="local">{{name}}</option>
+            <option value="openai">OpenAI</option>
+          </select>
+          <button id="voice-start" class="voice-icon" type="button" aria-pressed="false" aria-label="Turn voice on" title="Turn voice on" disabled><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v8M6.3 5.8a8 8 0 1 0 11.4 0"/></svg></button>
+          <button id="voice-mute" class="voice-icon" type="button" aria-pressed="true" aria-label="Unmute microphone" title="Microphone muted" disabled><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-4 0h8"/><path class="mic-slash" d="m3 3 18 18"/></svg></button>
+          <span class="voice-divider" aria-hidden="true"></span>
+          <button id="voice-picker" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="voice-menu" aria-label="Choose voice: Sol" title="Choose voice">Sol</button>
+          <button id="voice-volume-toggle" class="voice-icon" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="voice-volume-panel" aria-label="Voice volume: 100%" title="Volume"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m11 4-5 4H3v8h3l5 4z"/><path class="speaker-waves" d="M15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/><path class="speaker-slash" d="m16 9 5 6m0-6-5 6"/></svg></button>
+        </div>
+        <button id="send">send</button>
+      </div>
+      <p id="voice-status" class="voice-quiet" role="status" aria-live="polite">Voice off.</p>
+      <!-- What the voice app says about itself: which engine, and why the
+           assistant is not heard when it is not. Drawn only on the local road. -->
+      <p id="voice-app" class="voice-app hidden" role="status" aria-live="polite"></p>
+      <audio id="voice-audio" hidden></audio>
+      <div id="voice-menu" class="voice-popover" popover role="dialog" tabindex="-1" aria-label="Choose a voice">
+        <div class="voice-popover-title">Choose a voice</div>
+        <div id="voice-options" role="group" aria-label="Supported voices"></div>
+        <p id="voice-choice-hint" role="status">Loading voices…</p>
+        <button id="voice-retry" type="button" hidden>Try again</button>
+      </div>
+      <div id="voice-volume-panel" class="voice-popover" popover role="dialog" aria-label="Voice volume">
+        <div class="voice-popover-title"><label for="voice-volume">Volume</label><output id="voice-volume-value" for="voice-volume">100%</output></div>
+        <input id="voice-volume" type="range" min="0" max="100" step="1" value="100" aria-label="{{name}}'s voice volume">
+        <button id="voice-sound" type="button" hidden>Enable sound</button>
+      </div>
+    </footer>
+  </div>
+
+  <script src="/app.js"></script>
+  <script src="/codex_tasks.js"></script>
+  <script src="/voice_selection.js"></script>
+  <script src="/voice.js"></script>
+</body>
+</html>

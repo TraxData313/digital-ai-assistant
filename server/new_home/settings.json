@@ -1,0 +1,30 @@
+{
+ "note": "What a new home's data/ starts with, file by file. Everything that belongs to one household -- the voice on its speakers, its mod comments, its local memory model -- starts off, and is switched on under Settings or in these files when it is wanted.",
+ "voice.json": {
+  "enabled": false,
+  "port": 8765,
+  "voice": "default",
+  "backend": "local",
+  "note": "The local claude-voice speak server, if this machine has one. Off in a new home."
+ },
+ "watch.json": {
+  "per_day": 40,
+  "sources": {
+   "steam_comment": {"on": false},
+   "nexus_comment": {"on": false}
+  }
+ },
+ "recall.json": {
+  "model": null,
+  "note": "The automatic memory: a small local model in LM Studio that suggests essences before each turn. null is none."
+ },
+ "reach.json": {
+  "roots": ["{{documents}}"],
+  "note": "Where the assistant may look with `files`. The code and its own home are always included. Read-only in every case."
+ },
+ "plan.json": {
+  "plan": "not said yet",
+  "windows": [],
+  "note": "What subscription the assistant runs on, for it to see. Its owner keeps this current."
+ }
+}

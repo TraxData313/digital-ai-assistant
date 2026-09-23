@@ -1,0 +1,47 @@
+# A home is a private repo: its Spark, its settings and its prompts are
+# tracked, so every change to who it is has a history. What is below never is.
+
+# The store. It changes every turn, it is binary, and git would keep every
+# version whole forever. It leaves this machine as a nightly release asset
+# instead (server/offsite.py), and every local copy sits in all_backups/.
+data/store.db
+data/store.db-journal
+data/*.db
+data/*.db-journal
+
+# Every local copy: stamped zips, the latest zip, the night's before/after.
+all_backups/
+
+# What the room says while it runs.
+logs/
+
+# Keys: one per paired person, and the key to the angel door. Secrets with a
+# long life never ride out with a push.
+data/people/
+data/angel.token
+data/angel.inbox.json
+data/push.json
+
+# The room's running account of itself -- state, not history.
+data/tray.json
+data/watch_state.json
+data/wakings.jsonl
+data/comment_posts.jsonl
+data/worker.proof.json
+data/hands.json
+data/overmind.json
+data/overmind.tmp
+
+# What hands did, step by step, and the checkouts they worked in. Big, and
+# they ride in the backup zip rather than in git.
+data/workers/
+data/worktrees/
+
+# Pictures shown to the assistant, and anything trained on its store. Its
+# store's text, laid out another way -- they ride in the backup zip.
+data/pictures/
+data/adapter/
+data/writer/
+
+# Free notes: somebody's own scratch. They ride in the backup zip.
+data/notes/

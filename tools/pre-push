@@ -1,0 +1,41 @@
+#!/bin/sh
+# Refuses a push that would publish any word from a private denylist.
+#
+# Install it once per clone:
+#     cp tools/pre-push .git/hooks/pre-push
+# and say where your denylist is (it is private, so it lives outside this repo):
+#     git config privacy.denylist /path/to/denylist.txt
+#
+# Every commit being pushed is scanned, not only the last one: a name removed
+# in the newest commit is still published by the one before it.
+
+list=$(git config --get privacy.denylist)
+if [ -z "$list" ]; then
+    echo "pre-push: no privacy.denylist configured; refusing to push unscanned." >&2
+    echo "          git config privacy.denylist /path/to/denylist.txt" >&2
+    exit 1
+fi
+if [ ! -f "$list" ]; then
+    echo "pre-push: the denylist $list is not there; refusing to push unscanned." >&2
+    exit 1
+fi
+
+zero=0000000000000000000000000000000000000000
+status=0
+while read local_ref local_sha remote_ref remote_sha; do
+    [ "$local_sha" = "$zero" ] && continue          # a deletion publishes nothing
+    if [ "$remote_sha" = "$zero" ]; then
+        range="$local_sha --not --remotes"
+    else
+        range="$remote_sha..$local_sha"
+    fi
+    for commit in $(git rev-list $range); do
+        if ! python tools/privacy_scan.py --list "$list" --rev "$commit" --summary >/tmp/privacy-scan.$$ 2>&1; then
+            echo "pre-push: commit $commit would publish private words:" >&2
+            cat /tmp/privacy-scan.$$ >&2
+            status=1
+        fi
+    done
+done
+rm -f /tmp/privacy-scan.$$
+exit $status

@@ -1,0 +1,21 @@
+const fs = require('node:fs');
+const vm = require('node:vm');
+const assert = require('node:assert/strict');
+const source = fs.readFileSync(`${__dirname}/app.js`, 'utf8');
+const context = vm.createContext({});
+const at = source.indexOf('function nativeText(');
+vm.runInContext(source.slice(at, source.indexOf('function eventDetail(', at)), context);
+const text = context.nativeText({command: 'escaped transport command', commandActions: [{command: 'Get-Content fixture.txt'}],
+  cwd: 'C:/Documents', exitCode: 7, status: 'failed', aggregatedOutput: 'ASSERTION_FAILED', diff: '-one\n+two'});
+for (const expected of ['Working directory: C:/Documents', 'Get-Content fixture.txt', 'Exit code: 7', 'ASSERTION_FAILED', '-one\n+two']) assert.ok(text.includes(expected));
+assert.ok(!text.includes('escaped transport command'));
+assert.equal(context.nativeText({text: '{"reply":"Checking the file"}'}), 'Checking the file');
+assert.match(context.nativeText({stdout: 'hello', stderr: 'failure'}), /Standard output:\nhello[\s\S]*Standard error:\nfailure/);
+assert.doesNotMatch(source, /Start fixture proof|native-proof-start|ASSISTANT_NATIVE_PROOF/);
+assert.match(source, /On by default for Codex chat/);
+assert.match(source, /Download run log/);
+assert.match(source, /native-stop-live/);
+assert.match(source, /function nativeActionHtml/);
+assert.match(source, /post\("\/api\/providers\/native-tools", \{enabled: native.checked\}\)/);
+assert.match(source, /post\("\/api\/native-tools\/cancel", \{\}\)/);
+console.log('Native chat UI checks passed: readable commands/results, log download, toggle, active command and cancellation.');

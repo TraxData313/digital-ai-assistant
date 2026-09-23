@@ -1,0 +1,21 @@
+__pycache__/
+*.pyc
+
+# Which home this install runs. Written by `python -m server.setup`; one per
+# machine, and it names a folder on this disk, so it never rides in a commit.
+home.json
+
+# Keys for every service the assistant can think through. Per machine, never
+# committed, never printed.
+server/passwords.py
+
+# Local Codex / Claude runtime state the room may create beside the code.
+.codex/
+.claude/settings.local.json
+
+# Everything below belongs in a home folder, never beside the code. Listed so
+# that a room started the old way cannot leave a store in a commit.
+data/
+data_backups/
+all_backups/
+logs/

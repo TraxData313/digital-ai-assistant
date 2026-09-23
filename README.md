@@ -1,1 +1,112 @@
 # digital-ai-assistant
+
+A personal assistant that does not start over. It keeps one long working set,
+folds what it lets go of into essences it can search and reach back through,
+keeps its own Spark (the text it reads as itself), sends hands to do work,
+watches for things worth waking for, and folds its day at night. It runs as a
+small local web room on Windows, thinking through Claude Code on your plan,
+OpenAI, or OpenRouter.
+
+The code is shared. The assistant is not: everything that makes one assistant
+*that* one lives in its **home**, a folder of its own that is also its own
+private git repository. One install runs one home; a second machine can run a
+different assistant from the same code, and neither can see the other.
+
+## Install
+
+Needs Python 3.11+ on Windows, and for the default mind the `claude` command
+(Claude Code) signed in. For the nightly off-site backup, the GitHub CLI `gh`
+signed in.
+
+```
+git clone <this repo>
+cd digital-ai-assistant
+pip install -r requirements.txt
+```
+
+## Make an assistant, or pick one
+
+Point setup at a folder. An empty folder -- or a freshly created empty repo --
+becomes a new assistant; a folder that already holds one (it has
+`identity.json`) is simply chosen.
+
+```
+python -m server.setup C:\path\to\ava
+```
+
+It asks what the assistant is called, whom it works for, which port it answers
+on and which time zone its schedules mean, then writes:
+
+```
+<home>/
+  identity.json   name, owner, people, port, time zone
+  data/spark.md   a starter Spark -- rewrite it before the first turn
+  data/*.json     settings; everything household-specific starts off
+  .gitignore      the store, backups, logs and keys stay out of git
+```
+
+Add a private remote to the home and push it, so the nightly backup has
+somewhere to go:
+
+```
+cd C:\path\to\ava
+git remote add origin <a private repo>
+git push -u origin HEAD
+```
+
+## Run it
+
+```
+pythonw start.pyw --open     # the icon in the corner; it keeps the room up
+python -m server.app         # or the room in a console, saying everything
+.\make_shortcut.ps1 -Startup # a Desktop shortcut, and start at login
+```
+
+The room answers on `http://localhost:<port>`. It refuses to start without a
+home chosen, and refuses to share its port with another room.
+
+## Backups
+
+- Every local copy lives in the home's `all_backups/`, which git never sees:
+  stamped zips from the backup button, the latest zip under one name, and a
+  copy of the store at each edge of every night.
+- Once a night, after the dream, the latest zip is uploaded as a **release
+  asset** on the home's own repository (`server/offsite.py`), read back, and
+  kept on a rolling rule: seven nights, then one a week for twelve weeks.
+  Release assets never enter git's object store, so the repo does not grow.
+- The upload refuses if the repository is not private, every time, and says
+  so on a task rather than changing anything.
+
+## What a home can change
+
+Everything in `server/*.md`, `server/recall_config.py` and
+`server/digest_config.py` can be overridden by a file of the same name in the
+home's `prompts/`. The code's copies name nobody; `{{name}}`, `{{owner}}` and
+friends are filled from `identity.json`. Pictures work the same way from the
+home's `artwork/` (`icon.ico`, `icon-down.ico`, `portrait.png`,
+`wallpaper.png`, `wallpapers/`, `icon-192.png`, ...). Comment senses for Steam
+Workshop or Nexus Mods items read their items from `data/comments.json`.
+
+## Tests
+
+The benches run from the code folder with a made-up identity and never touch
+a home:
+
+```
+python -m server.test_projects %TEMP%\scratch.db
+python -m server.test_voice_backend
+```
+
+Each file says in its docstring whether it wants no argument, a scratch file
+or a scratch folder.
+
+## Keeping private things out of this repo
+
+`tools/privacy_scan.py` scans the working tree or any commit against a
+denylist you keep somewhere private. `tools/pre-push` is a git hook that runs
+it over every commit being pushed and refuses the push on any match:
+
+```
+cp tools/pre-push .git/hooks/pre-push
+git config privacy.denylist C:\path\to\your\denylist.txt
+```

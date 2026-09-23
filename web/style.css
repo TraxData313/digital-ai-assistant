@@ -1,0 +1,1228 @@
+:root {
+  /* How much of the room stands between the reader and the wallpaper.
+     These two are the only two, and they are here at the top so they can be
+     moved by eye: the wash that lies over the whole page, and the blur
+     behind it.
+
+     Lower either number to see more of the picture; raise them if the words
+     start swimming on the pale part of the sky. The wash went down until the
+     painting showed and back up until the words stopped swimming; 0.55 is
+     where it settled. The blur stays small: blur hides the picture, and dark
+     only dims it. Two smaller hands help and cost the picture nothing: the
+     vignette leans in harder at the edges, where the header and the
+     counters sit on pale sky, and the letters carry a soft halo of their own
+     on .view, with a shadow on .msg. */
+  --glass: rgba(22, 19, 17, 0.55);
+  --garden-blur: 3px;
+  /* The server replaces this one value from its wallpaper catalogue.  Keeping
+     the original here means the room still opens as the familiar garden
+     while its first Settings request is on the way. */
+  --room-wallpaper: url("/artwork/wallpaper.png");
+  --glass-solid: rgba(28, 25, 22, 0.92);
+  --line: rgba(232, 226, 219, 0.16);
+  --ink: #f0ebe4;
+  --dim: #b3a99f;
+  --faint: rgba(179, 169, 159, .55);
+  --ember: #f0954a;
+  --user: #9fc7e0;
+  --essence: #ecc14e;
+  --mint: #7ddfb4;
+  --bad: #ff7b6b;
+  --hand: #7aa8c4;
+  --well: rgba(10, 8, 7, .45);
+  /* The owner's colour, everyone else's, and then --person: the colour of
+     whoever is holding the device right now. The device chrome -- composer,
+     active tab, scrollbars, grip -- reads from --person, so the whole chat
+     answers "who is writing" at a glance. Ember stays for what means the
+     assistant: its essences and their markers, the portrait ring, the
+     clock. A stylesheet cannot know a home's person ids, so it colours by
+     role: app.js puts `not-owner` on the body, and on the lines of anyone
+     who is not the owner. */
+  --owner-color: #6f9fd8;
+  --other-color: #d98cbb;
+  --person: var(--owner-color);
+  /* The assistant's own colour: the ring the voice app bakes around its
+     face, to the digit, so its name reads in the colour it is drawn in. */
+  --self: #5eead4;
+}
+/* The room says who came in through the door, the switch in the composer
+   says whose hands are on the device, and the body carries the answer. */
+body.not-owner { --person: var(--other-color); }
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink);
+  font: 18px/1.55 "Segoe UI", system-ui, sans-serif;
+  background: #6f7a63 var(--room-wallpaper) center / cover no-repeat fixed;
+}
+body::before {
+  content: "";
+  position: fixed; inset: 0;
+  background: radial-gradient(130% 100% at 50% 45%,
+              rgba(0,0,0,0) 38%, rgba(20,16,12,0.42) 100%);
+  pointer-events: none;
+}
+
+/* The room fills the page on every screen, the way the phone always had
+   it -- the wallpaper reads through the glass instead of around a card. */
+#app {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  display: flex; flex-direction: column;
+  background: var(--glass);
+  backdrop-filter: blur(var(--garden-blur)) saturate(118%);
+  -webkit-backdrop-filter: blur(var(--garden-blur)) saturate(118%);
+  overflow: hidden;
+}
+
+/* --- header ---------------------------------------------------------- */
+header {
+  display: flex; align-items: center; gap: 16px;
+  padding: calc(12px + env(safe-area-inset-top)) calc(18px + env(safe-area-inset-right))
+           12px calc(18px + env(safe-area-inset-left));
+  border-bottom: 1px solid var(--line);
+  background: rgba(16, 13, 11, 0.35);
+}
+#portrait {
+  width: 84px; height: 84px; border-radius: 50%; object-fit: cover;
+  /* The voice app's own icon, served as it is -- framing and ring are baked
+     into the picture, so the two windows of the assistant cannot drift
+     apart. Only the glow is the page's. */
+  flex: none;
+  filter: drop-shadow(0 0 10px rgba(125, 223, 180, .30))
+          drop-shadow(0 4px 10px rgba(0, 0, 0, .40));
+}
+.head-left { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+h1 { font-size: 17px; margin: 0; letter-spacing: .14em; color: var(--self); font-weight: 600; }
+/* Wrapping, not clipping, at every width. Four things sat on this row --
+   Chat, Projects, Settings and the person pill -- and on a phone the pill
+   slid off the right edge showing half a name. A row that runs out of width now
+   folds; it never hides what is on it. */
+nav { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+/* Zero-sized, and the whole trick: a flex item with a full-width basis ends
+   the line it is on, so what follows starts a new one. Nothing is drawn.
+   Only under 700px -- above that the header row is exactly as it was. */
+.nav-break { display: none; }
+.tab {
+  background: none; border: 1px solid var(--line); color: var(--dim);
+  padding: 3px 14px; border-radius: 999px; cursor: pointer; font-size: 15.5px;
+}
+.tab:hover { color: var(--ink); }
+.tab.active { color: var(--ink); border-color: var(--person); }
+
+/* The one switch out of plain, at the top of the Dev view now -- the header
+   is names and places, and a phone has no width to spare there. Dashed so
+   it does not read as another place to be: it is a setting, not a page. */
+/* White, not grey. They were drawn in --dim like the tabs beside them, and
+   over a garden that is now half showing through, dim grey on a bright sky is
+   the one combination the page had that could not be read at all. They
+   keep the dashed border --
+   still a setting and not a place to be -- and only the words come forward. */
+.tab.switch { border-style: dashed; color: var(--ink); }
+body.detailed .tab.switch { color: var(--ink); border-style: solid; border-color: var(--person); }
+.workings-row { margin: 0 0 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Lines that live in the other room. The plain view filters, and a filter
+   that says nothing makes a broken conversation read as a whole one. One
+   quiet counted line stands where they are; the
+   whole store is under the workings, filtered never walled. */
+.elsewhere {
+  text-align: center; font-size: 13px; letter-spacing: .06em;
+  color: var(--faint); font-style: italic; margin: 10px 0;
+}
+
+/* Who is writing: picked at the top, worn in the person's own colour, so
+   the answer is readable before the list is ever opened. A pick signs every
+   line sent after it and recolors the whole chat. Free on purpose:
+   attribution, not a lock. */
+.person-pick {
+  margin-left: 6px; padding: 2px 10px; border-radius: 999px;
+  background: none; border: 1px solid var(--person); color: var(--person);
+  font: inherit; font-size: 15.5px; cursor: pointer; font-weight: 600;
+}
+.person-pick:focus { outline: none; }
+.person-pick option { background: #1c1916; color: var(--ink); font-weight: 400; }
+
+/* --- plain, which is the default ---------------------------------------
+   Plain is just the messages -- the picked person's own room. The workings
+   are not hidden with display:none and left in the page -- app.js does not
+   draw them at all -- so what stays here is only the header furniture.
+   The instrument panel is its own switch now, apart from the workings:
+   a desk keeps it on, a phone keeps it off, and each
+   person's choice is remembered on the device. */
+body:not(.gauges) #recall { display: none; }
+body:not(.gauges) #usage { display: none; }
+
+/* A compact live session label; long titles stay inside the header. */
+.session-indicator {
+  display: block; align-self: flex-start; max-width: 300px; width: 100%;
+  padding: 0; border: 0; background: none; text-align: left;
+  font: inherit; font-size: 14.5px; color: var(--dim); cursor: pointer;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.session-indicator.running { color: var(--ember); }
+.session-indicator:focus-visible { outline: 1px solid var(--person); outline-offset: 2px; }
+.session-indicator.running::before {
+  content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--ember); margin-right: 7px; vertical-align: middle;
+}
+
+/* The automatic memory: which small model, and where it stands. By id, not
+   by class: every "Automatic memory" line in the transcript is .act.recall,
+   and a bare .recall here pinned each of them to a 300px nowrap sliver. */
+#recall {
+  font-size: 14.5px; color: var(--dim); white-space: nowrap; cursor: pointer;
+  overflow: hidden; text-overflow: ellipsis; max-width: 300px;
+}
+#recall.off { opacity: .45; }
+#recall.on { color: var(--mint); }
+#recall.busy { color: var(--essence); }
+#recall.busy::before {
+  content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--essence); margin-right: 7px; vertical-align: middle;
+  animation: breathe 1.6s ease-in-out infinite;
+}
+#recall.bad { color: var(--bad); }
+#recall:hover { color: var(--ink); }
+
+/* The model and the plan's windows, the way Claude Code lays them out. */
+#usage {
+  margin-left: auto; flex: none; width: 300px;
+  font-size: 14.5px; color: var(--dim); font-variant-numeric: tabular-nums;
+  display: flex; flex-direction: column; gap: 4px;
+}
+#usage .model { color: var(--ink); display: flex; justify-content: space-between; gap: 10px; }
+#usage .model .plan { color: var(--dim); font-size: 13px; }
+#usage .win { display: grid; grid-template-columns: 1fr auto minmax(38px, auto); gap: 0 8px; align-items: center; }
+#usage .win .name { white-space: nowrap; }
+#usage .win .when { color: var(--faint); white-space: nowrap; }
+#usage .win .pct { text-align: right; color: var(--ink); }
+#usage .win .pct.none { color: var(--faint); }
+#usage .bar {
+  grid-column: 1 / -1; height: 3px; border-radius: 2px;
+  background: rgba(232, 226, 219, .12); overflow: hidden;
+}
+#usage .bar i { display: block; height: 100%; background: var(--user); width: 0; }
+#usage .win.warm .bar i { background: var(--essence); }
+#usage .win.hot .bar i { background: var(--bad); }
+#usage .win.muted { opacity: .55; }
+#usage .win.credits .name { color: var(--ember); }
+#usage [title] { cursor: help; }
+
+/* --- main ------------------------------------------------------------ */
+/* Setting only overflow-y makes the browser hand overflow-x an implicit
+   auto too, and one long token anywhere below is enough to open a sideways
+   scrollbar under the whole message list. Said plainly, as a backstop:
+   nothing in here ever scrolls sideways. */
+main { flex: 1; overflow-y: auto; overflow-x: hidden; scroll-behavior: auto; }
+main::-webkit-scrollbar { width: 10px; }
+main::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--person) 40%, transparent); border-radius: 8px; }
+.view { padding: 18px calc(24px + env(safe-area-inset-right)) 24px calc(24px + env(safe-area-inset-left)); }
+/* What the wash used to do, done by the letters themselves. A shadow under
+   every line in the reading column holds the words up over the pale part of
+   the sky, and costs the painting behind them nothing at all. */
+.view { text-shadow: 0 1px 3px rgba(8, 6, 4, .85), 0 0 10px rgba(8, 6, 4, .55); }
+.hidden { display: none !important; }
+@keyframes breathe { 0%, 100% { opacity: .4; } 50% { opacity: 1; } }
+
+/* --- the chat -------------------------------------------------------- */
+.msg { margin: 14px 0; }
+.msg .who {
+  font-size: 13px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--dim); display: flex; align-items: baseline; gap: 10px;
+}
+.msg .who b { font-weight: 600; }
+.msg .who .when { letter-spacing: 0; text-transform: none; color: var(--faint); }
+.msg.user .who b { color: var(--owner-color); }
+.msg.user.not-owner .who b { color: var(--other-color); }
+/* The assistant's name in its ring's own colour. Ember stays on its memory:
+   the essences and their markers. */
+.msg.self .who b { color: var(--self); }
+.msg.angel .who b { color: var(--mint); }
+.msg.angel { border-left: 2px solid var(--mint); padding-left: 12px; }
+.msg.lost { border-left: 2px solid var(--bad); padding-left: 12px; }
+.msg.lost .who b { color: var(--bad); }
+.msg.lost .body { font-style: italic; color: var(--dim); }
+.msg .body {
+  white-space: pre-wrap; margin-top: 3px;
+  /* A long unbroken token -- a path, a branch name -- must not set the width
+     of the whole page. Ordinary wrapping only breaks at spaces; this lets it
+     break the token itself, as a last resort, once there is nowhere else to. */
+  overflow-wrap: anywhere; word-break: break-word;
+}
+.msg .body b { color: #fff; font-weight: 600; }
+.msg .body code, .act-body code {
+  background: rgba(10,8,7,.5); padding: 1px 5px; border-radius: 4px;
+  font: 12px Consolas, monospace;
+  /* Code keeps its own shape -- it does not wrap mid-token -- but it must not
+     widen its parent either. Its own small box, scrolling sideways inside
+     itself, is where a long path or branch name lives now. */
+  display: inline-block; max-width: 100%; overflow-x: auto;
+  white-space: pre; vertical-align: bottom;
+}
+.msg .note { color: var(--essence); font-size: 14.5px; margin-top: 4px; font-style: italic; opacity: .85; }
+
+/* A line said but not yet written down by the room. A shade lighter than
+   a real one and otherwise identical, so nothing moves when the real row
+   arrives and takes its place. */
+.msg.echo { opacity: .78; }
+
+/* A row put out of memory: still here, readable, but plainly not in the
+   assistant's head any more. */
+.grey { opacity: .38; }
+.grey:hover { opacity: .7; }
+.grey .body { font-style: italic; }
+
+.small-btn {
+  background: none; border: 1px solid var(--line); color: var(--dim);
+  font-size: 13px; border-radius: 4px; cursor: pointer; padding: 0 6px;
+  letter-spacing: 0; text-transform: none;
+}
+.small-btn:hover { color: var(--ink); border-color: var(--ember); }
+
+/* The turn's own log: how long it took, opened on a click. */
+.tlog { font-size: 13px; color: var(--faint); letter-spacing: 0; text-transform: none;
+  background: none; border: none; cursor: pointer; padding: 0; }
+.tlog:hover { color: var(--ink); }
+.tlog.snags { color: var(--bad); }
+.steps {
+  margin: 4px 0 8px; display: flex; flex-direction: column; gap: 1px;
+  font-size: 14.5px; color: var(--dim);
+}
+.step { display: flex; gap: 8px; align-items: baseline; }
+.step .at {
+  color: var(--faint); font-variant-numeric: tabular-nums;
+  min-width: 44px; text-align: right; flex: none;
+}
+.step.snag { color: var(--bad); }
+.step.call { color: var(--ink); }
+
+/* What the assistant did, between the messages: one small line each, in the order it
+   happened, opening onto what it asked and what came back. */
+.act {
+  margin: 4px 0 4px 0; font-size: 15px; color: var(--dim);
+  border-left: 2px solid var(--line); padding-left: 10px;
+}
+.act > summary, .act > .line {
+  list-style: none; cursor: default; display: flex; gap: 8px; align-items: baseline;
+}
+details.act > summary { cursor: pointer; }
+.act > summary::-webkit-details-marker { display: none; }
+.act > summary::before { content: "\25b8"; color: var(--faint); width: 10px; flex: none; }
+.act[open] > summary::before { content: "\25be"; }
+.act > summary:hover, .act[open] > summary { color: var(--ink); }
+.act .lbl { color: var(--ink); font-weight: 600; flex: none; }
+.act .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.act[open] .txt { white-space: normal; }
+.act .when { color: var(--faint); flex: none; margin-left: auto; font-variant-numeric: tabular-nums; }
+.act.files, .act.fetch { border-left-color: rgba(125,223,180,.5); }
+.act.web { border-left-color: rgba(240,149,74,.55); }
+/* The assistant's memory is its own, not the device-holder's: ember, never
+   --person. */
+.act.search, .act.shelf { border-left-color: rgba(240,149,74,.5); }
+.act.essence { border-left-color: rgba(240,149,74,.5); }
+.act.essence .lbl { color: var(--ember); }
+.act.worker, .act.tell, .act.sent { border-left-color: rgba(122,168,196,.6); }
+.act.worker .lbl, .act.tell .lbl, .act.sent .lbl { color: var(--hand); }
+.act.snag { border-left-color: var(--bad); }
+.act.snag .lbl { color: var(--bad); }
+.act.snag .txt { white-space: normal; }
+.act.dream { border-left-color: rgba(186,148,222,.55); }
+.act.dream .lbl { color: #ba94de; }
+.act.recall { border-left-color: rgba(125,223,180,.5); }
+.act.recall .lbl { color: var(--mint); }
+.act.world { border-left-color: rgba(230,192,122,.55); }
+.act.world .lbl { color: #e6c07a; }
+.act.job { border-left-color: rgba(129,199,132,.55); }
+.act.job .lbl { color: #81c784; }
+.act.looking .lbl { color: var(--essence); }
+.act.looking .txt { font-style: italic; white-space: normal; }
+.act-body {
+  white-space: pre-wrap; margin: 6px 0 6px; padding: 8px 10px;
+  background: var(--well); border-radius: 6px; color: var(--dim);
+  font-size: 15px; overflow: auto; max-width: 100%;
+  /* Open one and it gets the screen: a hundred titles is a page to read,
+     not a porthole to scroll. dvh so a phone's toolbar does not eat it. */
+  max-height: 72vh; max-height: 72dvh;
+  overflow-wrap: anywhere; word-break: break-word;
+}
+.act-body.mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 14.5px; white-space: pre; }
+.act-body .cap { color: var(--faint); font-size: 13px; letter-spacing: .06em; text-transform: uppercase; margin: 8px 0 3px; }
+.act-body .cap:first-child { margin-top: 0; }
+.act-body .prose { white-space: pre-wrap; color: var(--ink); }
+.act-body .bad { color: var(--bad); }
+
+/* An essence: its name on the front, the whole of it on a click. Ember --
+   it is the assistant's, whoever is holding the device. */
+.ess {
+  margin: 3px 0; font-size: 15.5px;
+  border-left: 2px solid var(--ember); padding-left: 10px;
+  background: rgba(240,149,74,.07); border-radius: 0 6px 6px 0;
+}
+.ess > summary { list-style: none; cursor: pointer; display: flex; gap: 8px; align-items: baseline; padding: 2px 0; }
+.ess > summary::-webkit-details-marker { display: none; }
+.ess > summary::before { content: "\270e"; color: var(--ember); flex: none; }
+.ess .title { color: var(--ember); font-weight: 600; }
+.ess .title.none { color: var(--dim); font-weight: 400; font-style: italic; }
+.ess .meta { color: var(--faint); font-size: 14px; margin-left: auto; flex: none; font-variant-numeric: tabular-nums; }
+.ess .body { white-space: pre-wrap; margin: 4px 0 6px; color: var(--ink); }
+.ess.grey { background: none; }
+
+/* The trail behind an essence: quiet when it holds, loud when it does not. */
+.trail {
+  font-size: 14px; color: var(--dim); margin: 2px 0 6px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+}
+.trail .broken { color: var(--bad); }
+
+/* Where what the assistant remembers begins. */
+.divider {
+  display: flex; align-items: center; gap: 12px; margin: 22px 0 10px;
+  font-size: 13px; letter-spacing: .1em; text-transform: uppercase; color: var(--dim);
+}
+.divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.block-title { font-size: 13px; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); margin: 12px 0 4px; }
+.earlier { text-align: center; margin: 0 0 14px; }
+
+/* The answer arriving, in the place it will stay. */
+.forming::after { content: "\258f"; color: var(--ember); animation: breathe 1s ease-in-out infinite; }
+.status {
+  margin: 6px 0 14px; font-size: 15px; color: var(--dim);
+  border-left: 2px solid rgba(240,149,74,.45); padding-left: 10px;
+  display: flex; gap: 10px; align-items: baseline;
+}
+.status .what { animation: breathe 1.8s ease-in-out infinite; }
+.status .clock { color: var(--ember); font-variant-numeric: tabular-nums; flex: none; }
+.status.broke { border-left-color: var(--bad); }
+.status.broke .what { animation: none; color: var(--bad); white-space: pre-wrap; }
+
+/* --- the developer tab ------------------------------------------------- */
+.dev {
+  border: 1px solid var(--line); border-radius: 10px;
+  background: rgba(10, 8, 7, .32); margin-bottom: 12px;
+}
+.dev > summary {
+  list-style: none; cursor: pointer; padding: 10px 16px;
+  font-size: 13px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--ember); font-weight: 600; display: flex; gap: 12px; align-items: baseline;
+}
+.dev > summary::-webkit-details-marker { display: none; }
+.dev > summary::before { content: "\25b8"; color: var(--faint); width: 10px; }
+.dev[open] > summary::before { content: "\25be"; }
+.dev > summary .sub { color: var(--dim); font-weight: 400; letter-spacing: 0; text-transform: none; font-size: 15px; }
+.dev > .inner { padding: 2px 16px 14px; }
+.dev p { margin: 0 0 8px; }
+.dev .quiet { color: var(--dim); font-size: 15.5px; }
+.dev .bad { color: var(--bad); }
+
+.facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 18px; margin: 0 0 8px; }
+.facts dt { color: var(--dim); font-size: 15.5px; }
+.facts dd { margin: 0; font-variant-numeric: tabular-nums; }
+
+/* A folded list: one line per item, the whole of it on a click. */
+.fold {
+  border-left: 2px solid var(--line); padding-left: 10px; margin: 3px 0; font-size: 15.5px;
+}
+.fold > summary { list-style: none; cursor: pointer; display: flex; gap: 8px; align-items: baseline; padding: 2px 0; }
+.fold > summary::-webkit-details-marker { display: none; }
+.fold > summary::before { content: "\25b8"; color: var(--faint); width: 10px; flex: none; }
+.fold[open] > summary::before { content: "\25be"; }
+.fold > summary:hover { color: var(--ink); }
+.fold .lbl { font-weight: 600; color: var(--ink); flex: none; }
+.fold .txt { color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.fold[open] .txt { white-space: normal; }
+.fold .meta { color: var(--faint); font-size: 14px; margin-left: auto; flex: none; font-variant-numeric: tabular-nums; }
+.fold .body { white-space: pre-wrap; margin: 6px 0 8px; color: var(--ink); }
+.fold.user { border-left-color: var(--user); } .fold.user .lbl { color: var(--user); }
+.fold.self { border-left-color: var(--self); } .fold.self .lbl { color: var(--self); }
+.fold.angel { border-left-color: var(--mint); } .fold.angel .lbl { color: var(--mint); }
+.fold.worker, .fold.tell { border-left-color: var(--hand); } .fold.worker .lbl, .fold.tell .lbl { color: var(--hand); }
+.fold.tool { border-left-color: rgba(125,223,180,.5); } .fold.tool .lbl { color: var(--mint); }
+.fold.hand { border-left-width: 2px; margin: 8px 0; }
+.fold.hand .lbl { color: var(--hand); }
+.fold.hand.out { border-left-color: var(--ember); }
+.fold.page { margin-left: 12px; }
+
+/* The automatic memory's section under Developer. */
+.recall-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.recall-row label { color: var(--dim); font-size: 15.5px; display: flex; align-items: center; gap: 6px; }
+.recall-row select, .recall-row input {
+  background: var(--well); color: var(--ink); border: 1px solid var(--line);
+  border-radius: 6px; padding: 3px 8px; font: inherit; font-size: 15.5px;
+}
+.recall-row input { width: 70px; font-variant-numeric: tabular-nums; }
+.recall-row.knobs { gap: 8px 14px; margin-top: 4px; }
+.recall-row.knobs input { width: 62px; }
+.recall-row.knobs label[title] { cursor: help; border-bottom: 1px dotted var(--faint); }
+.recall-row select:focus, .recall-row input:focus { outline: none; border-color: var(--ember); }
+.recall-row .state { font-variant-numeric: tabular-nums; }
+.recall-row .state.on { color: var(--mint); }
+.recall-row .state.busy { color: var(--essence); }
+.recall-row .state.bad { color: var(--bad); }
+.recall-row .state.off { color: var(--dim); }
+/* The models folder: a path is wide, and not a number. */
+.recall-row input.path { width: min(560px, 100%); font-variant-numeric: normal; }
+ul.models { margin: 0 0 8px 18px; padding: 0; color: var(--dim); font-size: 15.5px; }
+.dl { margin: 0 0 10px; }
+.dl .bar { height: 4px; border-radius: 2px; background: rgba(232, 226, 219, .12); overflow: hidden; margin-bottom: 3px; }
+.dl .bar i { display: block; height: 100%; background: var(--essence); }
+
+.pill {
+  display: inline-block; padding: 0 8px; border-radius: 10px; font-size: 13px;
+  letter-spacing: .03em; border: 1px solid currentColor; flex: none; line-height: 1.6;
+}
+.pill.good { color: #78be8c; }
+.pill.warn { color: #dcb45a; }
+.pill.bad  { color: var(--bad); }
+.pill.live { color: var(--ember); }
+.pill.off  { color: var(--dim); }
+
+.prose { line-height: 1.6; }
+.prose h4 { font-size: 14.5px; letter-spacing: .06em; color: var(--mint); margin: 14px 0 4px; font-weight: 600; }
+.prose p { margin: 0 0 8px; }
+.prose ul { margin: 0 0 10px; padding-left: 18px; }
+.prose li { margin-bottom: 4px; }
+.prose li .num { color: var(--ember); font-weight: 600; }
+.prose code {
+  background: rgba(10,8,7,.5); padding: 1px 5px; border-radius: 4px; font: 12px Consolas, monospace;
+  display: inline-block; max-width: 100%; overflow-x: auto; white-space: pre; vertical-align: bottom;
+}
+
+pre {
+  background: rgba(10, 8, 7, .55); border: 1px solid var(--line); border-radius: 8px;
+  padding: 12px; overflow: auto; white-space: pre-wrap; word-break: break-word;
+  max-width: 100%;
+  font: 14.5px/1.5 Consolas, "Cascadia Mono", monospace; margin: 6px 0 12px; max-height: 520px;
+}
+.err { color: var(--bad); }
+
+.btn {
+  background: var(--ember); border: none; color: #1a1310; font-weight: 600;
+  padding: 6px 16px; border-radius: 8px; cursor: pointer; font-size: 15.5px;
+}
+.btn:hover { filter: brightness(1.08); }
+.btn:disabled { opacity: .45; cursor: progress; }
+.btn.broken { background: var(--bad); }
+
+/* --- the text box ---------------------------------------------------- */
+footer {
+  display: flex; flex-direction: column;
+  padding: 0 calc(16px + env(safe-area-inset-right))
+           calc(12px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
+  border-top: 1px solid var(--line);
+  background: rgba(16, 13, 11, 0.35);
+}
+#grip {
+  height: 15px; margin: 0 -16px 3px; cursor: ns-resize; touch-action: none;
+  display: flex; align-items: center; justify-content: center;
+}
+#grip::before {
+  content: ""; width: 46px; height: 3px; border-radius: 2px;
+  background: rgba(232, 226, 219, .2); transition: background .15s;
+}
+#grip:hover::before, #grip.dragging::before { background: var(--person); }
+.composer { display: flex; gap: 10px; align-items: flex-end; }
+/* The composer is whose hands are on the device. Not decoration: the box
+   they write in and the button they press carry the person picked at the
+   top, so whoever picks the thing up can tell at a glance who they are
+   writing as. Ember stays wherever it means the assistant -- its essences,
+   the portrait, the clock. */
+textarea {
+  flex: 1; resize: none; color: var(--ink);
+  background: var(--well);
+  border: 1px solid color-mix(in srgb, var(--person) 45%, transparent);
+  border-radius: 9px; padding: 9px 11px;
+  font: inherit; min-height: 46px; max-height: 78vh; overflow-y: auto;
+}
+textarea::-webkit-scrollbar { width: 10px; }
+textarea::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--person) 35%, transparent); border-radius: 8px; }
+textarea::placeholder { color: rgba(179,169,159,.7); }
+textarea:focus { outline: none; border-color: var(--person); }
+/* The button is the writer's colour, not a ring around the room's. Padding goes back
+   to 22px now the 2px border is gone, so the button is exactly the width it
+   has always been. */
+#send {
+  background: var(--person); border: none; color: #1a1310; font-weight: 600;
+  padding: 0 22px; height: 46px; flex: none; border-radius: 9px; cursor: pointer;
+}
+#send:hover { filter: brightness(1.08); }
+#send:disabled { opacity: .45; cursor: default; }
+
+/* --- pictures -------------------------------------------------------------
+   The tray is what is waiting to go with the next line: it does not exist
+   until something is pasted, dropped or picked, and it is gone again the
+   moment the line is sent. It says the token cost on every chip, because
+   what a picture costs is the one thing about it worth knowing before
+   pressing send. */
+#attach {
+  background: transparent; color: var(--person); cursor: pointer;
+  border: 1px solid color-mix(in srgb, var(--person) 45%, transparent);
+  border-radius: 9px; height: 46px; width: 40px; flex: none;
+  font-size: 25px; line-height: 1; padding: 0;
+}
+#attach:hover { border-color: var(--person); background: var(--well); }
+.tray {
+  display: flex; flex-wrap: wrap; gap: 8px; padding: 0 0 9px;
+  align-items: flex-start;
+}
+.tray.hidden { display: none; }
+.chip {
+  display: flex; align-items: center; gap: 8px; padding: 5px 6px 5px 5px;
+  background: var(--well); border-radius: 9px;
+  border: 1px solid color-mix(in srgb, var(--person) 35%, transparent);
+  max-width: 320px;
+}
+.chip img {
+  width: 40px; height: 40px; object-fit: cover; border-radius: 6px;
+  flex: none; background: rgba(0, 0, 0, .25);
+}
+.chip-name {
+  font-size: 14.5px; max-width: 130px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.chip-size { font-size: 13px; color: var(--dim); white-space: nowrap; }
+.chip-x {
+  background: none; border: none; color: var(--dim); cursor: pointer;
+  font-size: 20.5px; line-height: 1; padding: 0 3px;
+}
+.chip-x:hover { color: var(--ink); }
+.pic-note { font-size: 14.5px; color: var(--bad); width: 100%; }
+
+/* Dragging a file anywhere over the window says so, once, at the edge --
+   a whole-page overlay would cover the very thing being pointed at. */
+body.dropping #app { outline: 2px dashed var(--person); outline-offset: -6px; }
+
+/* On a line that was said. A thumbnail, not the picture: the full size is one
+   click away, and a screenshot drawn at its own width would push the
+   conversation off the screen. */
+.pics { display: flex; flex-wrap: wrap; gap: 8px; margin: 7px 0 2px; }
+.pic {
+  display: block; line-height: 0; border-radius: 8px; overflow: hidden;
+  border: 1px solid var(--line); background: rgba(0, 0, 0, .2);
+}
+.pic img {
+  display: block; max-width: 240px; max-height: 190px;
+  width: auto; height: auto;
+}
+.pic:hover { border-color: var(--person); }
+.msg.grey .pics { opacity: .65; }
+
+@media (max-width: 1000px) {
+  #usage { width: 240px; }
+}
+
+/* A wide monitor gets the garden, not hundred-word lines: the glass fills
+   the page and the words keep a readable column down its middle. */
+@media (min-width: 1200px) {
+  .view { max-width: 1040px; margin-inline: auto; }
+  header { padding-inline: calc((100% - 1040px) / 2 + 18px); }
+  footer { padding-inline: calc((100% - 1040px) / 2 + 16px); }
+}
+
+/* --- the phone, laid out for 390px wide ---------------------------------
+   Nothing here is hidden. The header stacks: portrait and words on the first
+   row, the gauges shrunk to a full-width strip under them. --vh is set by
+   app.js from visualViewport so the composer sits on top of the keyboard
+   rather than under it; 100dvh is the answer when there is no script yet. */
+@media (max-width: 700px) {
+  /* A phone has no sides for the garden to breathe through -- the column is
+     the whole screen -- and it gets read outdoors, where the sky washes out
+     first. So the wash is heavier here than on the monitor. */
+  :root { --glass: rgba(22, 19, 17, 0.54); --garden-blur: 6px; }
+  /* The window itself, not the document: a phone's keyboard shrinks the one
+     and not the other, and the footer has to sit on top of the keyboard. */
+  body { height: 100dvh; height: var(--vh, 100dvh); overflow: hidden; }
+  #app {
+    width: 100vw; height: 100dvh; height: var(--vh, 100dvh);
+    border-radius: 0; border: none;
+  }
+  header { flex-wrap: wrap; gap: 10px; padding-bottom: 8px; }
+  #portrait { width: 48px; height: 48px; }
+  h1 { font-size: 14.5px; }
+  .head-left { flex: 1; gap: 4px; }
+  .tab { padding: 3px 11px; font-size: 14.5px; }
+
+  .session-indicator, #recall { max-width: none; width: 100%; font-size: 14px; }
+
+  /* The gauges are shrunk, not dropped: same numbers, one line each. */
+  #usage {
+    width: 100%; margin-left: 0; flex-basis: 100%;
+    font-size: 12.5px; gap: 3px;
+  }
+  #usage .model { font-size: 13px; }
+  #usage .model .plan { font-size: 12px; }
+  #usage .win { grid-template-columns: minmax(0, 1fr) auto auto; gap: 0 6px; }
+  #usage .win .name { overflow: hidden; text-overflow: ellipsis; }
+  #usage .win .when { text-align: right; overflow: hidden; text-overflow: ellipsis; }
+  #usage .bar { height: 2px; }
+
+  .view { padding: 12px calc(14px + env(safe-area-inset-right)) 18px calc(14px + env(safe-area-inset-left)); }
+  footer { padding-left: calc(10px + env(safe-area-inset-left)); padding-right: calc(10px + env(safe-area-inset-right)); }
+  .composer { gap: 8px; }
+  #send { padding: 0 16px; }
+  /* The + is the only way in on a phone -- nothing to paste from, nothing to
+     drag -- so it keeps its full height while everything around it narrows. */
+  #attach { width: 34px; font-size: 23px; }
+  .chip { max-width: 100%; }
+  .chip-name { max-width: 100px; }
+  .pic img { max-width: 100%; max-height: 220px; }
+  /* The person switch gets its own line under the tabs, at any width, and
+     keeps its left edge with them. Never clipped: it is the one control that
+     says whose words the next line will be, and half a name is not an
+     answer to that. */
+  .nav-break { display: block; flex-basis: 100%; width: 100%; height: 0; margin: 0; }
+  .person-pick { font-size: 14.5px; padding: 2px 8px; margin-left: 0; max-width: 100%; }
+  /* 16px or the phone zooms the whole page when the box takes focus. */
+  textarea { font-size: 19px; }
+  #grip { height: 20px; margin: 0 -10px 3px; }
+  .act .when { display: none; }
+  .act-body { max-height: 68vh; max-height: 68dvh; }
+}
+
+/* How to pair a phone: one line, only ever drawn on this machine. Quiet, and
+   selectable -- it is there to be copied once and then ignored forever. */
+.pair { font-size: 13px; opacity: .45; margin-top: 2px; }
+.pair .key { user-select: all; font-family: var(--mono, monospace); }
+.pair:hover { opacity: .85; }
+
+
+/* --- Projects -------------------------------------------------------------
+   Their work, drawn the way the chat is drawn: plain, literal labels, the
+   words bigger than the furniture around them. Two things on this page are
+   not decoration and are styled so they cannot be missed -- who wrote a note
+   line, and the fact that nothing on it is scheduled. */
+
+#view-projects .proj-top { margin-bottom: 18px; }
+#view-projects .who-writing { font-size: 13.5px; color: var(--dim); margin-bottom: 8px; }
+#view-projects .who-writing b { color: var(--person); }
+/* The way out of the language guess. An aside in the same line, not a
+   control anybody has to notice before they can read the page. */
+#view-projects .who-writing .lang { margin-left: 10px; font-size: 12px; }
+
+.project {
+  border: 1px solid var(--line); border-radius: 10px;
+  background: var(--well); padding: 14px 16px 12px; margin-bottom: 18px;
+  /* The same backstop the chat gets, so nothing a note or a task carries
+     can widen the page. */
+  overflow-wrap: anywhere; word-break: break-word;
+}
+.project.closed { opacity: .6; }
+.p-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.p-head h2 { margin: 0; font-size: 18px; font-weight: 600; color: var(--ink); }
+.p-owner {
+  font-size: 12px; color: var(--dim); border: 1px solid var(--line);
+  border-radius: 999px; padding: 1px 9px;
+}
+.p-folder {
+  font-family: var(--mono, monospace); font-size: 12px;
+  color: var(--faint); margin-top: 3px; word-break: break-all;
+}
+.project h3 {
+  margin: 16px 0 6px; font-size: 12px; font-weight: 600; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--dim);
+}
+.project .empty { font-size: 13.5px; color: var(--faint); padding: 2px 0 4px; }
+
+/* A note line wears its author. The name is in that person's own colour --
+   the same two colours the chat answers "who is writing" with -- because
+   telling one person's words from another's at a glance is the whole
+   point of the box. */
+.notes { display: flex; flex-direction: column; gap: 10px; }
+.note-line { border-left: 2px solid var(--owner-color); padding: 1px 0 1px 10px; }
+.note-line.not-owner { border-left-color: var(--other-color); }
+.note-who { font-size: 12.5px; font-weight: 600; color: var(--owner-color); }
+.note-line.not-owner .note-who { color: var(--other-color); }
+.note-when { font-size: 11.5px; color: var(--faint); margin-left: 8px; }
+.note-text { font-size: 15px; line-height: 1.5; color: var(--ink); margin-top: 2px; }
+.note-own { margin-top: 2px; display: flex; gap: 8px; }
+.mini {
+  background: none; border: none; padding: 0; cursor: pointer;
+  font-size: 11.5px; color: var(--faint); text-decoration: underline;
+}
+.mini:hover { color: var(--ink); }
+.note-add { display: flex; gap: 8px; margin-top: 12px; align-items: flex-start; }
+.note-add textarea {
+  flex: 1; min-height: 46px; font-size: 15px; padding: 7px 10px;
+  border-radius: 8px; border: 1px solid var(--line);
+  background: rgba(0, 0, 0, .18); color: var(--ink); resize: vertical;
+}
+
+.task {
+  border-top: 1px solid var(--line); padding: 9px 0 7px;
+}
+.task.done, .task.dropped { opacity: .55; }
+.task-top { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+.task-title { font-size: 15.5px; color: var(--ink); }
+.task.done .task-title { text-decoration: line-through; }
+.task-state { font-size: 12.5px; }
+.task-wants { font-size: 14px; color: var(--dim); margin-top: 3px; line-height: 1.45; }
+.task-meta { font-size: 12px; color: var(--faint); margin-top: 3px; }
+
+/* A description and a note line are drawn with the block renderer, so they
+   arrive wrapped in a .prose that carries the Spark's spacing. Here the last
+   block's tail margin only pushes the row apart, and the list sits tighter. */
+.note-text .prose, .task-wants .prose { line-height: inherit; }
+.note-text .prose > :last-child, .task-wants .prose > :last-child { margin-bottom: 0; }
+.note-text .prose ul, .task-wants .prose ul { margin-bottom: 6px; padding-left: 16px; }
+.note-text .prose p, .task-wants .prose p { margin-bottom: 6px; }
+.task-wants .prose h4 { font-size: 13px; margin: 8px 0 3px; }
+
+/* There is no clock in this build. A repeating task says so on its own face,
+   in the same words the room sends the assistant, so nobody -- the
+   assistant included -- reads a
+   schedule as a thing that will fire. */
+.no-clock {
+  font-size: 12.5px; color: var(--ember); margin-top: 4px;
+  border-left: 2px solid var(--ember); padding-left: 8px; opacity: .85;
+}
+.no-clock b { color: var(--ink); font-weight: 600; }
+
+.job-card {
+  margin-top: 7px; border: 1px solid var(--line); border-left: 2px solid var(--hand);
+  border-radius: 8px; padding: 7px 10px; background: rgba(0, 0, 0, .14);
+}
+.job-card.missing { border-left-color: var(--bad); font-size: 13px; color: var(--dim); }
+.job-title { font-size: 13.5px; color: var(--hand); font-weight: 600; }
+.job-goal { font-size: 13.5px; color: var(--ink); margin-top: 2px; }
+.job-figs { font-size: 12px; color: var(--faint); margin-top: 3px; }
+.job-said { font-size: 12.5px; color: var(--dim); margin-top: 3px; }
+
+/* Shut, the job is one line with a caret; open, the diary is under it. The
+   caret follows the same shape the rest of the page folds with. Long titles
+   wrap under the figures rather than widening the row -- the phone rule. */
+details.job-card > summary {
+  list-style: none; cursor: pointer; display: flex; gap: 8px;
+  align-items: baseline; flex-wrap: wrap;
+}
+details.job-card > summary::-webkit-details-marker { display: none; }
+details.job-card > summary::before {
+  content: "\25b8"; color: var(--faint); width: 10px; flex: none;
+}
+details.job-card[open] > summary::before { content: "\25be"; }
+details.job-card > summary .job-figs { margin-top: 0; }
+.job-inner { margin-top: 5px; padding-left: 18px; }
+.job-inner > :first-child { margin-top: 0; }
+.job-card.flat .job-figs { margin-top: 0; }
+.job-card.flat { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+
+.project .form, .proj-top .form { display: flex; flex-direction: column; gap: 9px; }
+.form label { display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; color: var(--dim); }
+.form label.tick { flex-direction: row; align-items: center; gap: 7px; font-size: 13.5px; }
+.form input, .form select, .form textarea {
+  font-size: 15px; padding: 6px 9px; border-radius: 8px;
+  border: 1px solid var(--line); background: rgba(0, 0, 0, .18); color: var(--ink);
+}
+.form label.tick input { width: auto; }
+.form textarea { min-height: 54px; resize: vertical; }
+.form button, .note-add button {
+  align-self: flex-start; font-size: 13.5px; padding: 6px 14px;
+  border-radius: 8px; border: 1px solid var(--line);
+  background: rgba(255, 255, 255, .06); color: var(--ink); cursor: pointer;
+}
+.form button:hover, .note-add button:hover { border-color: var(--person); }
+/* On the assistant's desk: its own to open and close, shown here and not
+   switchable -- the Projects tab is a window on its head, not a knob on it. */
+.p-owner.desk { color: var(--self); border-color: var(--self); opacity: .85; }
+
+/* --- the shelf ------------------------------------------------------------
+   Projects are shut by default and one row each: title, whose it is, where it
+   is on disk, and how many tasks are open. Tapping the row opens it; the
+   choice is remembered per project.
+   Nothing in here may widen the page: a Windows path is one long token and a
+   phone has 360 pixels, so every path breaks anywhere it has to. */
+
+.project { padding: 0; overflow: hidden; }
+.p-row {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px;
+  padding: 12px 14px; cursor: pointer; user-select: none;
+}
+.p-row:hover { background: rgba(255, 255, 255, .03); }
+.p-caret { color: var(--faint); font-size: 12px; width: 10px; }
+.p-name { font-size: 17px; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.p-count { font-size: 12.5px; color: var(--faint); margin-left: auto; white-space: nowrap; }
+.project.open .p-row { border-bottom: 1px solid var(--line); }
+.p-body { padding: 4px 14px 12px; }
+.p-body h3:first-of-type { margin-top: 12px; }
+
+/* The path, on the row and in the box that edits it. It wraps rather than
+   scrolling the page sideways -- main already refuses that, and a row that
+   needed it would push the whole shelf out of shape. */
+.p-row .p-folder {
+  flex-basis: 100%; margin: 0; font-family: var(--mono, monospace);
+  font-size: 11.5px; color: var(--faint);
+  overflow-wrap: anywhere; word-break: break-all;
+}
+.p-folder.none { font-style: italic; font-family: inherit; opacity: .7; }
+.p-miss { color: var(--ember); opacity: .8; margin-left: 8px; font-family: inherit; }
+.folder-form { margin-top: 12px; }
+
+/* --- where a project lives ------------------------------------------------
+   A row per resource: what it is, what it says, and who wrote it. The value
+   wraps rather than widening the row, because a URL is exactly the kind of
+   long unbroken string the phone rule exists for. */
+.res-row {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px;
+  padding: 5px 0; border-top: 1px solid var(--line);
+}
+.res-row:first-child { border-top: none; }
+.res-key {
+  font-size: 12.5px; font-weight: 600; color: var(--dim);
+  min-width: 96px; flex: none;
+}
+.res-val {
+  font-size: 14px; color: var(--ink); overflow-wrap: anywhere;
+  word-break: break-all; flex: 1 1 220px;
+}
+a.res-val { color: var(--hand); text-decoration: underline; }
+a.res-val:hover { color: var(--ink); }
+.res-val.none { color: var(--faint); font-style: italic; }
+.res-who { font-size: 11.5px; color: var(--faint); white-space: nowrap; }
+.res-form { margin-top: 12px; }
+
+/* --- what a sense has been doing -----------------------------------------
+   The last look sits on the shut line, because "is this running" is the
+   whole question. The notable lines are inside. */
+.act-when { color: var(--faint); margin-left: 8px; font-size: 12px; }
+.act-never { color: var(--ember); }
+.act-line {
+  display: flex; gap: 10px; align-items: baseline; padding: 3px 0;
+  font-size: 13.5px;
+}
+.act-at { color: var(--faint); font-size: 12px; white-space: nowrap; flex: none; }
+.act-said { color: var(--ink); overflow-wrap: anywhere; }
+
+/* --- the glance strip -----------------------------------------------------
+   The first thing on the tab. Two lines at most: what is asking something of
+   the reader, and then the quiet count of everything else.
+
+   It sits on the same well the projects do. Floating it straight on the
+   garden looked lighter and was unreadable, and this is the one line that
+   has to survive being read standing up. */
+.glance {
+  border: 1px solid var(--line); border-radius: 10px;
+  background: var(--well); padding: 11px 16px 12px; margin-bottom: 18px;
+  overflow-wrap: anywhere; word-break: break-word;
+}
+.glance-wait {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px;
+  border-left: 2px solid var(--ember); padding-left: 10px; margin-bottom: 8px;
+}
+.glance-lbl {
+  font-size: 12px; font-weight: 600; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--ember);
+}
+.wait-one {
+  font-size: 14.5px; color: var(--ink); overflow-wrap: anywhere;
+}
+.wait-in { font-size: 12.5px; color: var(--dim); margin-left: 6px; }
+/* Quiet, not invisible. Faint is the right weight for a figure sitting on a
+   panel; this line carries the counts a person came to the tab for. */
+.glance-quiet {
+  font-size: 13px; color: var(--dim); overflow-wrap: anywhere;
+}
+
+/* --- comments waiting for an answer ---------------------------------------
+   The one thing on the page that arrives by itself and asks something of the
+   reader. Ember, like the waiting line: stored and asking, not running. The
+   count on the tab's own button is the same fact, seen from the chat. */
+.tab-mark {
+  display: inline-block; margin-left: 7px; padding: 0 7px; border-radius: 999px;
+  background: var(--ember); color: #1a1410; font-size: 12px; font-weight: 700;
+  line-height: 18px; vertical-align: 1px;
+}
+.chip-wait { color: var(--ember); border-color: rgba(240, 149, 74, .38); }
+.wait-list {
+  margin: 8px 0 10px; border-left: 2px solid var(--ember); padding-left: 10px;
+}
+.wait-head {
+  font-size: 12px; font-weight: 600; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--ember); margin-bottom: 4px;
+}
+.wait-page {
+  font-size: 12.5px; font-weight: 400; letter-spacing: 0; text-transform: none;
+  margin-left: 10px; color: var(--hand); text-decoration: underline;
+}
+.wait-page:hover { color: var(--ink); }
+.wait-row {
+  display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline;
+  padding: 5px 0; font-size: 14px; border-top: 1px solid var(--line);
+}
+.wait-row:first-of-type { border-top: none; }
+.wait-who { font-weight: 600; color: var(--ink); }
+.wait-when { font-size: 12px; color: var(--faint); white-space: nowrap; }
+.wait-text { flex: 1 1 100%; color: var(--ink); overflow-wrap: anywhere; }
+.wait-aside { flex: 1 1 100%; font-size: 12.5px; color: var(--dim); }
+
+/* --- what a task wears ----------------------------------------------------
+   A chip says what fires this task. Ember is the page's existing word for
+   stored-but-not-running and it means the same thing here; mint is a thing
+   that genuinely runs by itself. A reader who never opens a task should
+   still be able to tell those two apart across a whole shelf. */
+.chip {
+  font-size: 12px; border: 1px solid var(--line); border-radius: 999px;
+  padding: 1px 9px; color: var(--dim); white-space: nowrap;
+}
+.trig-hand { color: var(--faint); }
+.trig-words { color: var(--ember); border-color: rgba(240, 149, 74, .38); }
+.trig-sense { color: var(--mint); border-color: rgba(125, 223, 180, .38); }
+.trig-date { color: var(--mint); border-color: rgba(125, 223, 180, .38); }
+.chip-item {
+  font-family: var(--mono, monospace); font-size: 11px; color: var(--faint);
+}
+.chip-needs { color: var(--person); border-color: var(--person); }
+
+/* A trigger phrase can be long -- somebody's own schedule words, or an
+   item's name. It wraps inside the row rather than pushing the row wider. */
+.t-row .chip { white-space: normal; overflow-wrap: anywhere; }
+
+/* --- a task, shut ---------------------------------------------------------
+   One line: what it is, what fires it, where it stands, when it last moved.
+   The whole row opens it, the way a project row does -- except the state
+   pick, which is the thing done most often here and must not fold the row
+   away under the hand doing it. */
+.t-row {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 9px;
+  padding: 7px 0; cursor: pointer; user-select: none;
+}
+.t-row:hover { background: rgba(255, 255, 255, .03); }
+.t-caret { color: var(--faint); font-size: 12px; width: 10px; flex: none; }
+.t-row .task-title { overflow-wrap: anywhere; }
+.t-row .task-state { margin-left: auto; }
+.t-moved { font-size: 12px; color: var(--faint); white-space: nowrap; }
+.t-body { padding: 2px 0 8px 19px; }
+.t-body .task-meta { margin-top: 5px; }
+.t-body > .dev { margin-top: 10px; }
+.task.unfolded { background: rgba(255, 255, 255, .02); }
+
+/* --- standing, and to do --------------------------------------------------
+   Two groups because they are two different things to a reader: what the
+   house keeps doing, and what somebody wants done once. */
+.t-group + .t-group { margin-top: 14px; }
+.t-group-name {
+  font-size: 11.5px; font-weight: 600; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--dim); padding-bottom: 2px;
+}
+.t-group-n {
+  color: var(--faint); font-weight: 400; letter-spacing: 0;
+  text-transform: none; font-size: 12px; margin-left: 7px;
+}
+
+/* --- the shut project row answers all three ------------------------------- */
+.p-moved { font-size: 12px; color: var(--faint); white-space: nowrap; }
+.p-wait {
+  font-size: 12px; color: var(--ember); border: 1px solid rgba(240, 149, 74, .4);
+  border-radius: 999px; padding: 1px 9px; white-space: nowrap;
+}
+/* `p-count` pushes itself right; anything after it should sit beside it
+   rather than starting a second race for the same edge. */
+.p-row .p-count { margin-left: auto; }
+.p-row .p-moved { margin-left: 0; }
+.form input, .form select, .form textarea, .note-add textarea {
+  /* The padding is inside the width, or a full-width field on a phone is
+     wider than the card holding it. */
+  box-sizing: border-box; max-width: 100%; min-width: 0;
+}
+
+/* --- where a line came from, and their free notes -------------------- */
+/* A labelled line from a phone says so after the name, quietly: the door
+   it came through is what the assistant is told, so it is what the reader
+   sees too. */
+.msg .who .via { letter-spacing: 0; text-transform: none; color: var(--faint); font-size: 12.5px; }
+/* Their own standing scratch, riding next to the Spark. The box wears the
+   person's colour like the composer does: whose notes these are is whoever
+   is picked at the top. */
+.my-notes textarea {
+  width: 100%; box-sizing: border-box; min-height: 130px; max-height: 60vh;
+  resize: vertical; font-size: 15.5px; line-height: 1.45; display: block;
+}
+.my-notes .row { display: flex; gap: 12px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+.my-notes .quiet { font-size: 14px; }
+
+/* --- room background ------------------------------------------------------
+   Tiny pictures are no help when the choice is an entire room, so every tile
+   keeps a wide visible crop.  The grid has no fixed column count: it uses the
+   phone's one column, then fills the desk without making the Settings page
+   wider than its reader. */
+.wallpaper-current { display: flex; gap: 12px; align-items: center; margin: 2px 0 12px; }
+.wallpaper-current img {
+  width: min(184px, 42vw); height: 86px; object-fit: cover; border-radius: 7px;
+  border: 1px solid var(--line); background: rgba(0, 0, 0, .18); flex: none;
+}
+.wallpaper-current b { color: var(--ink); overflow-wrap: anywhere; }
+.wallpaper-current .quiet { margin: 2px 0 0; }
+.wallpaper-upload { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 10px 0 8px; }
+.wallpaper-upload input { max-width: 100%; color: var(--dim); font: inherit; font-size: 14px; }
+.wallpaper-upload button, .wallpaper-option {
+  border: 1px solid var(--line); background: rgba(255, 255, 255, .06); color: var(--ink);
+  border-radius: 8px; cursor: pointer;
+}
+.wallpaper-upload button { padding: 6px 12px; font-size: 13.5px; }
+.wallpaper-upload button:hover:not(:disabled), .wallpaper-option:hover:not(:disabled) { border-color: var(--person); }
+.wallpaper-upload button:disabled, .wallpaper-option:disabled { cursor: wait; opacity: .65; }
+.wallpaper-note { min-height: 1.35em; margin: 3px 0 10px; font-size: 13.5px; color: var(--dim); }
+.wallpaper-note.bad { color: var(--bad); }
+.wallpaper-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 9px; }
+.wallpaper-option { min-width: 0; padding: 5px; text-align: left; overflow: hidden; }
+.wallpaper-option img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 5px; background: rgba(0, 0, 0, .22); }
+.wallpaper-option .wallpaper-name { display: block; padding: 5px 3px 1px; font-size: 13px; overflow-wrap: anywhere; }
+.wallpaper-option[aria-checked="true"] { border-color: var(--self); box-shadow: inset 0 0 0 1px rgba(94, 234, 212, .35); }
+.wallpaper-option[aria-checked="true"] .wallpaper-name::after { content: " · current"; color: var(--self); }
+@media (max-width: 420px) {
+  .wallpaper-current { align-items: flex-start; }
+  .wallpaper-current img { width: 128px; height: 72px; }
+  .wallpaper-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* --- which model it thinks with -------------------------------------------
+   Its own section under Settings: the model right now, the picker, what is
+   left to spend, the keys, and every model with the price read off the wire a
+   moment ago. Sized like the rest of the tab and a shade up on the body text,
+   so the default starts where a reader who zooms would put it. */
+.prov-now { font-size: 17px; }
+.prov-now b { color: var(--ember); }
+.dev .inner h4 {
+  margin: 14px 0 6px; font-size: 13px; letter-spacing: .09em;
+  text-transform: uppercase; color: var(--dim); font-weight: 600;
+}
+#prov-pick, #prov-dream {
+  font-size: 15.5px; padding: 6px 9px; border-radius: 8px; max-width: 100%;
+  border: 1px solid var(--line); background: rgba(0, 0, 0, .28); color: var(--ink);
+}
+#prov-pick option, #prov-dream option, #prov-pick optgroup, #prov-dream optgroup {
+  background: #1c1916; color: var(--ink);
+}
+#prov-pick option:disabled, #prov-dream option:disabled { color: var(--faint); }
+
+/* One key per row. The box is a password field on purpose: a key pasted at
+   the desk is still a key on a screen somebody may be standing behind. */
+.prov-key { border-left: 2px solid var(--line); padding-left: 10px; margin: 0 0 10px; }
+.prov-key label { display: block; font-size: 14.5px; color: var(--dim); margin-bottom: 2px; }
+.prov-key .quiet { margin: 0 0 4px; font-variant-numeric: tabular-nums; }
+.prov-key-box {
+  font-size: 15px; padding: 6px 9px; border-radius: 8px; width: min(360px, 100%);
+  border: 1px solid var(--line); background: rgba(0, 0, 0, .28); color: var(--ink);
+}
+.prov-key-save, .prov-key-clear, #prov-refresh {
+  font-size: 13.5px; padding: 6px 14px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--line); background: rgba(255, 255, 255, .06); color: var(--ink);
+}
+.prov-key-save:hover, #prov-refresh:hover { border-color: var(--person); }
+.prov-key-clear:hover { border-color: var(--bad); color: var(--bad); }
+
+/* The catalogue. Wide content scrolls inside itself rather than pushing the
+   page sideways -- this tab is read on a phone as often as at the desk. */
+.prov-table { width: 100%; border-collapse: collapse; font-size: 15px; display: table; }
+.prov-table td { padding: 6px 10px 6px 0; border-top: 1px solid var(--line); vertical-align: top; }
+.prov-table tr.on td { background: rgba(240, 149, 74, .07); }
+.prov-table .nm { font-weight: 600; color: var(--ink); white-space: nowrap; }
+.prov-table .ab { color: var(--dim); }
+.prov-table .pr { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.prov-table .cx { color: var(--dim); text-align: right; font-variant-numeric: tabular-nums; }
+.prov-table .svc { display: block; font-size: 12.5px; color: var(--faint); font-weight: 400; }
+@media (max-width: 700px) {
+  /* No room for four columns on a phone: the description drops and the row
+     becomes name, price, room -- which is what a person is picking on. */
+  .prov-table .ab { display: none; }
+}
+/* A paid road has no plan window. Its line in the header says what the
+   currency is instead of drawing an empty bar. */
+#usage .win.paid .name { color: var(--ember); }
+#usage .win.paid .bar i { width: 0; }
+
+/* The balance the owner writes down off a dashboard no API will read for
+   us. Same shape as a key box, because it is the same kind of thing: a fact
+   only the owner can supply, kept at the desk. */
+.prov-credit {
+  font-size: 15px; padding: 6px 9px; border-radius: 8px; width: min(280px, 100%);
+  border: 1px solid var(--line); background: rgba(0, 0, 0, .28); color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.prov-credit-save, .prov-credit-clear {
+  font-size: 13.5px; padding: 6px 14px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--line); background: rgba(255, 255, 255, .06); color: var(--ink);
+}
+.prov-credit-save:hover { border-color: var(--person); }
+.prov-credit-clear:hover { border-color: var(--bad); color: var(--bad); }
+/* Session oversight uses the room's ordinary controls and typography. */
+#view-codex { padding: 1.2rem; }
+#view-codex button { margin: .35rem .6rem .35rem 0; }
+#view-codex input, #view-codex select { font: inherit; max-width: 100%; padding: .3rem .5rem; color: var(--ink); background: var(--well); border: 1px solid var(--line); border-radius: 5px; }
+#view-codex .codex-task { padding: 1rem 0; border-bottom: 1px solid var(--line); }
+#view-codex .codex-task p { color: var(--dim); font-size: .9rem; margin: .3rem 0; }
+#view-codex [role="alert"] { color: var(--bad); }
+#view-codex a { color: inherit; overflow-wrap: anywhere; }
+#view-codex pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* Compact voice controls; the media stream never presents a recording player. */
+#voice-tools { display:flex; flex:none; align-items:center; gap:3px; height:44px; padding:3px 5px; border:1px solid var(--line); border-radius:24px; background:rgba(18,20,17,.5); }
+#voice-tools button { display:grid; place-items:center; width:34px; height:34px; padding:0; border:0; border-radius:50%; color:var(--dim); background:transparent; cursor:pointer; }
+#voice-tools button:hover:not(:disabled) { color:var(--ink); background:rgba(255,255,255,.08); }
+#voice-tools button:focus-visible, .voice-popover button:focus-visible { outline:2px solid var(--self); outline-offset:3px; }
+#voice-tools button:disabled { opacity:.35; cursor:default; }
+#voice-tools svg { width:19px; height:19px; }
+#voice-tools .voice-divider { width:1px; height:16px; background:var(--line); margin:0 4px; }
+#voice-tools #voice-start[aria-pressed="true"] { color:var(--self); background:rgba(129,222,210,.12); }
+#voice-tools #voice-mute[aria-pressed="false"] { color:var(--self); }
+#voice-mute[aria-pressed="false"] .mic-slash { display:none; }
+#voice-tools #voice-picker { color:#242f30; background:radial-gradient(circle at 30% 20%,#f1eee8 0%,#c6d5e4 45%,#95b3c7 100%); font:600 11px/1 system-ui,sans-serif; letter-spacing:.01em; box-shadow:inset 0 0 0 1px rgba(255,255,255,.3); }
+#voice-tools[data-state="on"] #voice-picker { box-shadow:0 0 0 2px rgba(129,222,210,.22),inset 0 0 0 1px rgba(255,255,255,.4); }
+#voice-volume-toggle .speaker-slash { display:none; }
+#voice-volume-toggle.is-muted .speaker-slash { display:block; }
+#voice-volume-toggle.is-muted .speaker-waves { display:none; }
+#voice-tools #voice-volume-toggle.needs-sound { color:var(--ember); box-shadow:inset 0 0 0 1px currentColor; }
+/* Which voice says the assistant's lines. Sized to sit in the same 34px row
+   as the icons beside it, and wide enough for both words at a large zoom. */
+#voice-backend { flex:none; height:34px; padding:0 6px; border:0; border-radius:17px; color:var(--dim); background:transparent; font:600 12px/1 system-ui,sans-serif; cursor:pointer; }
+#voice-backend:hover { color:var(--ink); background:rgba(255,255,255,.08); }
+#voice-backend:focus-visible { outline:2px solid var(--self); outline-offset:3px; }
+#voice-backend option { color:var(--ink); background:#22251f; }
+#voice-tools[data-backend="local"] #voice-backend { color:var(--self); }
+/* The local road: the voice app owns the microphone, the volume and the picker,
+   so this bar stops pretending to. Hidden rather than disabled -- a control
+   that decides nothing is not worth a greyed-out place on a phone. */
+#voice-tools[data-backend="local"] #voice-mute,
+#voice-tools[data-backend="local"] #voice-picker,
+#voice-tools[data-backend="local"] #voice-volume-toggle,
+#voice-tools[data-backend="local"] .voice-divider { display:none; }
+#voice-status { margin:5px 3px 0; font-size:13px; line-height:1.4; color:var(--dim); overflow-wrap:anywhere; }
+.voice-app { margin:5px 3px 0; font-size:13px; line-height:1.4; color:var(--dim); overflow-wrap:anywhere; }
+.voice-app.hidden { display:none; }
+.voice-app.warn { color:var(--ember); }
+/* How the assistant meant the line to land, under the line. Its own
+   wording, in the orange the room keeps for its own marks, small enough to
+   be an aside. */
+.msg .sound { margin-top:6px; font-size:12.5px; font-style:italic; line-height:1.45; color:var(--ember); opacity:.92; overflow-wrap:anywhere; }
+#voice-status.error { color:var(--bad); }
+#voice-status.voice-quiet { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+#voice-audio[hidden], .voice-popover [hidden] { display:none; }
+.voice-popover { position:fixed; inset:auto; box-sizing:border-box; margin:0; width:252px; max-width:calc(100vw - 20px); max-height:60vh; overflow:auto; padding:16px; border:1px solid rgba(212,219,204,.2); border-radius:18px; color:var(--ink); background:#22251f; box-shadow:0 12px 42px rgba(0,0,0,.4); font:14px/1.4 system-ui,sans-serif; }
+.voice-popover::backdrop { background:transparent; }
+.voice-popover-title { display:flex; justify-content:space-between; gap:12px; font-size:12px; font-weight:600; color:var(--dim); margin-bottom:14px; }
+#voice-options { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; }
+#voice-options button { display:flex; flex-direction:column; align-items:center; gap:6px; padding:9px 2px; color:var(--dim); background:transparent; border:1px solid transparent; border-radius:12px; font:12px/1.2 system-ui,sans-serif; cursor:pointer; }
+#voice-options .voice-swatch { display:grid; place-items:center; width:34px; height:34px; border-radius:50%; background:radial-gradient(circle at 30% 20%,#edf0e7,#b4cbc7 65%,#829a9a); color:#253331; font-size:10px; font-weight:600; }
+#voice-options button:nth-child(3n+2) .voice-swatch { background:radial-gradient(circle at 30% 20%,#f4e5d6,#d5c2ad 65%,#a5998c); }
+#voice-options button:nth-child(3n) .voice-swatch { background:radial-gradient(circle at 30% 20%,#f0e7f3,#c1b7d4 65%,#9592b4); }
+#voice-options button:hover:not(:disabled) { background:rgba(255,255,255,.05); color:var(--ink); }
+#voice-options button[aria-pressed="true"] { border-color:rgba(129,222,210,.45); background:rgba(129,222,210,.07); color:var(--self); }
+#voice-options button:disabled { cursor:default; opacity:.5; }
+#voice-choice-hint { font-size:12px; color:var(--dim); margin:12px 0 0; }
+#voice-volume-panel { width:220px; }
+#voice-volume-panel .voice-popover-title { margin-bottom:8px; }
+#voice-volume { display:block; width:100%; height:28px; margin:0; accent-color:var(--self); cursor:pointer; }
+#voice-retry, #voice-sound { border:1px solid var(--line); border-radius:8px; color:var(--self); background:transparent; font:inherit; padding:6px 10px; margin-top:10px; cursor:pointer; }
+@media (max-width:700px) {
+  .composer { display:grid; grid-template-columns:34px minmax(0,1fr) auto; grid-template-areas:"attach input send" ". voice voice"; gap:8px; }
+  #attach { grid-area:attach; }
+  #input { grid-area:input; min-width:0; }
+  #send { grid-area:send; }
+  #voice-tools { grid-area:voice; justify-self:end; }
+  #voice-tools button { width:36px; height:36px; }
+  #voice-tools { height:44px; }
+}
