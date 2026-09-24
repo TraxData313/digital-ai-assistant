@@ -89,7 +89,8 @@ class Refused(ValueError):
     in the message. Never a stack trace at a person."""
 
 
-CLAUDE_PAUSED = "Paused: Codex-only mode disables Claude/Anthropic. Pending work is retained."
+CLAUDE_PAUSED = ("Paused: Codex-only mode disables the room's own Claude/Anthropic calls. "
+                 "Pending work is retained. Claude Code sessions are not affected.")
 _MODE_LOCK = threading.RLock()
 _CLAUDE_ACTIVE = 0
 
@@ -175,7 +176,7 @@ def set_codex_only(enabled):
 def paused_capabilities() -> list:
     if not codex_only():
         return []
-    names = ["Delegated workers and their job execution", "Model-backed web search",
+    names = ["Model-backed web search",
              "Claude quota polling and quota senses"]
     if paused_reason(dream_model()):
         names.append("Dreams (saved night model requires Claude)")

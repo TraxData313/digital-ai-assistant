@@ -21,7 +21,7 @@ import urllib.request
 from pathlib import Path
 from unittest.mock import patch
 
-from . import app, brain, db, limits, notes, people, worker
+from . import app, brain, db, limits, notes, people
 
 FAILED = []
 PRETEND = {"addr": "127.0.0.1"}
@@ -97,8 +97,6 @@ def main():
     brain._VOICE_SEEN.update(at=0.0, was=None)
     limits._CACHE.update({"at": time.time() + 3600, "limits": {}, "error": None,
                           "asking": False})
-    worker.READY.update({"checked": True,
-                         "state": {"ok": False, "why": "the bench sends nobody"}})
 
     app.Handler._peer = _pretend_peer
     room = app.OneRoom(("127.0.0.1", 0), app.Handler)

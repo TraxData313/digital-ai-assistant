@@ -60,9 +60,7 @@ DATA_BACKUPS = home.BACKUPS
 STORE_IN_ZIP = "data/store.db"
 STAMP = home.SLUG + "-"
 
-# Everything in `data/` worth carrying out, beside the store itself. The
-# worker logs come too: what an errand actually did, step by step, lives only
-# on disk -- the working set has what it *said*, never what it did.
+# Everything in `data/` worth carrying out, beside the store itself.
 ALSO = ["spark.md", "spark.history", "plan.json", "voice.json", "recall.json",
         # Who it is and whom it serves, so a zip alone can bring it back.
         "../identity.json",
@@ -74,14 +72,14 @@ ALSO = ["spark.md", "spark.history", "plan.json", "voice.json", "recall.json",
         # them would search the store in a space it never ruled on, with a floor
         # measured for another. Small -- a quarter of a megabyte each.
         "adapter",
-        "workers",
-        # The hands it keeps: a restart keeps a thread, and without this a
-        # restore would lose it.
-        "hands.json", "overmind.json",
-        # The job cards and the digest's dials. The jobs were found riding in
-        # neither git nor this list once -- a restore would
-        # have lost every open job silently.
-        "jobs.json", "digest.json",
+        # The logs of the hands it sent before sessions replaced them: history
+        # its old rows point at.
+        "workers", "hands.json",
+        # The Codex and Claude sessions it follows.
+        "overmind.json", "claude_sessions.json",
+        # The job cards. They were found riding in neither git nor this list
+        # once -- a restore would have lost every open job silently.
+        "jobs.json",
         # The notebook's cap. The notes themselves are a table in the store.
         "notebook.json",
         # The pixels themselves. Rows point at these by name, so a store

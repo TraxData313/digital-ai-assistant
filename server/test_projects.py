@@ -297,8 +297,7 @@ def main():
 
     # 12c. A project the assistant starts itself, with a folder made under the
     #      projects shelf.
-    from . import worker
-    worker.ASSISTANT_PROJECTS = scratch / "Ada"
+    projects.ASSISTANT_PROJECTS = scratch / "Ada"
     made = projects.start_project(conn, "the tide map", "tide-map")
     check("it can start a project of its own", made["ok"])
     check("the folder was made under the projects shelf for the assistant's work",
@@ -343,10 +342,10 @@ def main():
     # 12e. The assistant's own folder op, and the fence round it.
     #      Documents and the store are moved into the scratch for this, so
     #      the rules are leant on without a real folder being made anywhere.
-    from . import worker
+
     docs = scratch / "Documents"
-    worker.DOCUMENTS = docs
-    worker.ASSISTANT_PROJECTS = docs / "Ada"
+    projects.DOCUMENTS = docs
+    projects.ASSISTANT_PROJECTS = docs / "Ada"
     db.DB_PATH = scratch / "room" / "room.db"
     outside = scratch / "Elsewhere"
     outside.mkdir(parents=True, exist_ok=True)

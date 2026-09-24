@@ -21,7 +21,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from . import app, brain, db, worker
+from . import app, brain, db
 
 PORT = 8790
 BASE = "http://127.0.0.1:" + str(PORT)
@@ -93,10 +93,6 @@ def main():
     db.DB_PATH = scratch / "store.db"
     made = not db.DB_PATH.exists()
 
-    # No proving of leashes on a bench: `ready()` spawns real models to prove
-    # them, and this is a room that will never send anyone anywhere.
-    worker.READY.update(checked=True, state={"ready": False, "why": "a bench"})
-
     conn = db.connect()
     if made:
         make_a_store(conn)
@@ -151,7 +147,7 @@ def lean_on(conn, rows_now, events_now, trails_now):
           and st["counts"]["past"] == len(unloaded), st["counts"])
     check("the keys the room already knew are all still there",
           {"contract", "prompt", "rows", "trails", "events", "last_turn",
-           "worker", "backup"} <= set(st), sorted(st))
+           "backup"} <= set(st), sorted(st))
 
     # 2. Every event belonging to those rows comes with them -- including a
     #    worker's account, which belongs by naming its row in its own detail.

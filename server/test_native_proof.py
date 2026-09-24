@@ -93,18 +93,6 @@ class DoorTests(unittest.TestCase):
             people.open_room(self.http.server_address[1])
         self.assertIn("?k=synthetic-sam", opened.call_args.args[0])
 
-    def test_legacy_hook_pairs_only_to_local_room_route(self):
-        from . import worker_hook
-        root = Path(self.temp.name)
-        key = root / "data/people/sam.token"
-        key.parent.mkdir(parents=True)
-        key.write_text("synthetic-hook")
-        # The hook's own fallback is under test, so the home a bench names
-        # for itself in the environment is set aside for this check.
-        with patch.object(worker_hook, "__file__", str(root / "server/worker_hook.py")),                 patch.dict(os.environ, {"ASSISTANT_HOME": ""}):
-            self.assertEqual(worker_hook._room_headers("http://127.0.0.1:8787/api/worker/knock")["Cookie"], "ada_who=synthetic-hook")
-            self.assertNotIn("Cookie", worker_hook._room_headers("https://example.com/api/worker/knock"))
-
     def test_ipv6_loopback_requires_a_key_and_remote_peer_cannot_pair(self):
         import ipaddress
         handler = app.Handler.__new__(app.Handler)
@@ -228,7 +216,7 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(NativeClient.instances[-1].sent, [])
 
     def test_room_mutation_is_refused_before_answer_applied(self):
-        for field in ("spark", "restart", "worker", "clock", "job", "project", "essences"):
+        for field in ("spark", "restart", "claude", "clock", "job", "project", "essences"):
             with self.subTest(field=field), self.assertRaisesRegex(ValueError, field):
                 native_proof.validate_answer({field: "change"})
 

@@ -47,6 +47,9 @@
                they all write in, and the tasks. Plain like the chat is
                plain -- plain for everyone. -->
           <button id="tab-projects" class="tab">Projects</button>
+          <!-- Every Codex and Claude Code session on this machine, and which
+               of them the assistant is following. -->
+          <button id="tab-sessions" class="tab">Sessions</button>
           <!-- The header is names and places, and a phone has no width to
                spare. The switches out of plain live at the top of this
                tab's view, not up here. -->
@@ -63,9 +66,9 @@
 {{people_options}}
           </select>
         </nav>
-        <!-- Live Codex activity, with task controls one tap away. -->
-        <button id="codex-sessions" class="session-indicator" type="button"
-                aria-live="polite" aria-atomic="true" title="Codex sessions — open task controls">none</button>
+        <!-- Live session activity, the Sessions tab one tap away. -->
+        <button id="sessions-indicator" class="session-indicator" type="button"
+                aria-live="polite" aria-atomic="true" title="Sessions — open the Sessions tab">none</button>
         <!-- The automatic memory: which small model, and whether it is loaded.
              An instrument, so it is drawn only when the gauges are on. -->
         <div id="recall" class="recall off" title="the automatic memory — details under Settings"></div>
@@ -80,7 +83,7 @@
     <main id="main">
       <section id="view-chat" class="view"></section>
       <section id="view-projects" class="view hidden"></section>
-      <section id="view-codex" class="view hidden"></section>
+      <section id="view-sessions" class="view hidden"></section>
       <section id="view-dev" class="view hidden"></section>
     </main>
 
@@ -137,7 +140,7 @@
   <dialog id="new-assistant-dialog" class="room-dialog" aria-labelledby="new-assistant-title"></dialog>
 
   <script src="app.js"></script>
-  <script src="codex_tasks.js"></script>
+  <script src="sessions.js"></script>
   <script src="voice_selection.js"></script>
   <script src="voice.js"></script>
 </body>

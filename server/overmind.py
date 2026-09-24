@@ -136,6 +136,14 @@ def snapshot():
                 'handled_count': len(handled), 'audit': state['audit'][-10:]}
 
 
+def offered():
+    """Whether the assistant is given Codex tasks at all: its owner's switch,
+    and a controller to work through. Off, it has no operation, no
+    instructions and no wakings for them."""
+    state = _load()
+    return bool(state.get('enabled') and state.get('controller'))
+
+
 def for_prompt():
     state = snapshot()
     if not state.get('controller'):

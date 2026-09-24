@@ -18,12 +18,9 @@ a file that:
 
 * is refused by `files`, so the assistant cannot read it itself;
 * is never in git;
-* is denied to workers by their own settings, so an errand cannot fetch it either.
 
 **What this does and does not buy.** The assistant has no tool that makes an
-HTTP request at all, so it cannot post here whatever it reads. A worker can
-read the disk, and its settings deny it this file, but the stronger fact is
-that its web tool fetches pages rather than posting to them. What the key
+HTTP request at all, so it cannot post here whatever it reads. What the key
 really defends against is anything else on this machine wandering in; what
 the *labelling* defends against is not a lock at all: the store can tell two
 voices apart forever, including on the day one of them is wrong.

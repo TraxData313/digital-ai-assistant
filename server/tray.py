@@ -16,8 +16,8 @@ room is the engine.
 The rule the whole file turns on: **the room comes back unless the icon asked
 it not to.** The assistant's own restart, `restart.ps1`, and a crash at four
 in the morning are then all one path, and none of them is a window. The only exception is a
-room that cannot boot at all, which would otherwise respawn forever and spend
-real money proving the worker cap on every attempt -- see `Strikes`.
+room that cannot boot at all, which would otherwise respawn forever -- see
+`Strikes`.
 
 Stdlib only, like the rest of `server/`. The tray is Shell_NotifyIcon through
 ctypes rather than a pip install, and the icon comes off the home's
@@ -160,6 +160,10 @@ IDYES = 6
 CREATE_NO_WINDOW = 0x08000000
 PROCESS_TERMINATE, PROCESS_SET_QUOTA = 0x0001, 0x0100
 JOB_KILL_ON_CLOSE = 0x2000
+# A process started with CREATE_BREAKAWAY_FROM_JOB may leave the job. Only
+# the Claude Code background service does (server/claude_sessions.py): it
+# holds everybody's sessions, so it must outlive any one room.
+JOB_BREAKAWAY_OK = 0x800
 ERROR_ALREADY_EXISTS = 183
 
 
@@ -311,7 +315,7 @@ def keep_the_room_with_me():
     if not job:
         return None
     info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
-    info.BasicLimitInformation.LimitFlags = JOB_KILL_ON_CLOSE
+    info.BasicLimitInformation.LimitFlags = JOB_KILL_ON_CLOSE | JOB_BREAKAWAY_OK
     if not kernel32.SetInformationJobObject(
             job, 9, ctypes.byref(info), ctypes.sizeof(info)):
         return None
@@ -390,9 +394,8 @@ class Strikes:
 
     A room that cannot boot at all -- a syntax error in something edited at
     midnight, a store that will not open -- dies in a second and never
-    answers the port. Restarted forever it would prove the worker cap on
-    every attempt, and that is a real model call and real money while nobody
-    is watching. Three of those in a row and the icon stops trying.
+    answers the port. Restarted forever it would spin while nobody is
+    watching. Three of those in a row and the icon stops trying.
 
     A room that opens properly and then falls over is a different animal. It
     worked, so bringing it back is right, and it is brought back every time.
@@ -480,10 +483,10 @@ class Room:
         # carries further than it looks. Measured: the room started this way
         # has no console *at all*, and neither does anything it starts,
         # whether or not that thing's output is redirected. So git, the claude
-        # binary, and every worker hand the assistant sends run without one
-        # -- which is the thing to keep in mind before adding a spawn here.
-        # Without it, a hand coming home at two in the morning would put a
-        # black rectangle on the screen, and we would be back where we began.
+        # and codex binaries, and every session the assistant starts run
+        # without one -- which is the thing to keep in mind before adding a
+        # spawn here. Without it, a session started at two in the morning
+        # would put a black rectangle on the screen.
         self.proc = subprocess.Popen(
             self.command(),
             cwd=str(ROOT), env=env,

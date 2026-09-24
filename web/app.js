@@ -8,7 +8,6 @@ const MAIN = $("main");
 
 let state = null;      // /api/state -- rows, events, its prompt, the contract
 let progress = null;   // /api/progress -- the turn as it happens, and who is out
-let workers = null;    // /api/workers -- the roster and the hands it keeps
 let plans = null;      // /api/projects -- their projects, notes and tasks
 // What has just been said and the room has not handed back yet. A list, not
 // one line: a second thing can be said while the assistant is still thinking
@@ -24,7 +23,7 @@ let devTimer = null;
 // Everything the reader has opened, by key, so a re-render never folds it back up.
 // The two sections of the Developer tab that answer the everyday questions
 // start open; the rest wait to be asked.
-const OPEN = new Set(["dev:hands", "dev:memory"]);
+const OPEN = new Set(["dev:memory"]);
 
 // --- who is writing --------------------------------------------------------
 // The door says who came IN -- loopback is the owner, a key is a paired
@@ -1677,101 +1676,6 @@ function facts(pairs) {
     .map(([kk, v]) => `<dt>${esc(kk)}</dt><dd>${esc(String(v))}</dd>`).join("") + `</dl>`;
 }
 
-const RUN_STATE = {
-  running:          ["out now", "live"],
-  completed:        ["came back", "good"],
-  orphaned:         ["never came home", "warn"],
-  unclaimed:        ["came home late", "warn"],
-  budget_exhausted: ["out of money", "bad"],
-  max_turns:        ["out of turns", "bad"],
-  killed_timeout:   ["out of time", "bad"],
-  stalled:          ["stuck", "bad"],
-  mismatch:         ["came up wrong", "bad"],
-  refused:          ["refused", "bad"],
-  error:            ["broke", "bad"],
-  unknown:          ["unknown", "warn"],
-};
-
-function pageHtml(w) {
-  const [word, tone] = RUN_STATE[w.status] || RUN_STATE.unknown;
-  const meta = [shortWhen(w.started), w.model || "", w.turns ? w.turns + " turns" : "",
-                w.seconds ? w.seconds + "s" : "", w.cost_usd ? "$" + w.cost_usd : ""]
-    .filter(Boolean).join(" · ");
-  const inner = `<div class="act-body"><div class="cap">what ${esc(MY_NAME)} said to it</div>` +
-    `<div class="prose">${esc(w.brief || "(nothing)")}</div>` +
-    (w.report ? `<div class="cap">what it said</div><div class="prose">${md(w.report)}</div>` : "") +
-    ((w.problems || []).length ? `<div class="cap">problems</div><div class="bad">${esc(w.problems.join("\n\n"))}</div>` : "") +
-    (w.woke_us === false && w.status !== "refused" && w.status !== "running"
-      ? `<div class="cap">note</div>it never knocked — what is here was read off the run` : "") +
-    `</div>`;
-  const label = `<span class="pill ${tone}">${esc(word)}</span> ` +
-    (w.name ? `page ${w.page || 1}` : esc(w.title || "(untitled)"));
-  return fold("run:" + w.run, "page", label, firstLine(w.brief, 95), meta, inner);
-}
-
-function devHands() {
-  if (!workers) return `<p class="quiet">looking…</p>`;
-  const r = workers.ready || {}, w = workers.window || {};
-  const roster = workers.roster || [];
-  const out = roster.filter((x) => x.status === "running");
-  let html = "";
-  html += out.length
-    ? `<p><span class="pill live">out now</span> ` + out.map((o) =>
-        `<b>${esc(o.name || o.title || "an errand")}</b>${o.page ? " page " + o.page : ""} · away ${ago(o.started)}`).join(" · ") + `</p>`
-    : `<p class="quiet">Nobody is out.</p>`;
-  html += r.ready
-    ? `<p class="quiet">ready to send · $${(w.spent ?? 0).toFixed(2)} of $${(w.of ?? 0).toFixed(2)} ` +
-      `spent in the last ${w.hours}h` + (w.searches ? ` (plus $${w.searches.toFixed(2)} on web searches)` : "") +
-      ` · ${r.version || ""}</p>`
-    : `<p class="bad">nothing will be sent: ${esc(r.why || "the checks did not pass")}</p>`;
-
-  // Every hand with a name: the ones the assistant keeps, and the ones only the roster
-  // still remembers. A page that ran is shown whether or not the hand is kept.
-  const byName = {};
-  for (const h of workers.hands || []) byName[h.name] = { ...h };
-  for (const run of roster) {
-    if (run.name && !byName[run.name]) {
-      byName[run.name] = { name: run.name, role: run.role, size: run.size, title: run.title,
-                           status: "gone", pages: 0, created: run.started, sent_by: run.sent_by };
-    }
-  }
-  const hands = Object.values(byName).sort((a, b) =>
-    String(b.last_page_at || b.created || "").localeCompare(String(a.last_page_at || a.created || "")));
-
-  if (hands.length) {
-    html += `<div class="block-title">hands with a name</div>`;
-    html += hands.map((h) => {
-      const pages = roster.filter((x) => x.name === h.name).sort((a, b) => (a.page || 0) - (b.page || 0));
-      const st = h.status === "dismissed" ? ["dismissed", "off"]
-        : h.status === "out" ? ["out now", "live"]
-        : h.status === "gone" ? ["not kept any more", "warn"]
-        : ["kept", "good"];
-      const bench = (h.sent_by === "bench" || pages.some((p) => p.sent_by === "bench"))
-        ? ` <span class="pill warn">bench</span>` : "";
-      const meta = [h.role || "", h.size || "", (pages.length || h.pages || 0) + " page" + ((pages.length || h.pages) === 1 ? "" : "s"),
-                    h.spent_usd ? "$" + h.spent_usd : "", h.thread_tokens ? "~" + k(h.thread_tokens) + " tokens in its thread" : "",
-                    h.last_page_at ? "last " + shortWhen(h.last_page_at) : ""].filter(Boolean).join(" · ");
-      const inner = (h.why ? `<p class="quiet">why: ${esc(h.why)}</p>` : "") +
-        (h.branch ? `<p class="quiet">branch ${esc(h.branch)}${h.cwd ? " · " + esc(h.cwd) : ""}</p>` : "") +
-        (h.folder ? `<p class="quiet">folder ${esc(h.folder)}${h.cwd ? " · " + esc(h.cwd) : ""}</p>` : "") +
-        (h.session ? `<p class="quiet">its whole thread, in a terminal: <code>claude --resume ${esc(h.session)}</code></p>` : "") +
-        (h.orphaned_page ? `<p class="bad">page ${h.orphaned_page} was mid-run when the room last closed and never came home.</p>` : "") +
-        (pages.map(pageHtml).join("") || `<p class="quiet">no pages on disk.</p>`);
-      const label = `<span class="pill ${st[1]}">${esc(st[0])}</span> ${esc(h.name)}${bench}`;
-      return fold("hand:" + h.name, "hand" + (h.status === "out" ? " out" : ""), label,
-                  h.title || "", meta, inner);
-    }).join("");
-  }
-
-  const errands = roster.filter((x) => !x.name);
-  if (errands.length) {
-    html += `<div class="block-title">errands without a name · newest first</div>` +
-      errands.map(pageHtml).join("");
-  }
-  if (!hands.length && !errands.length) html += `<p class="quiet">nobody has been sent yet.</p>`;
-  return html;
-}
-
 function devMemory() {
   const p = state.prompt || {}, me = p.self || {};
   const idx = p.out_of_reach || {};
@@ -1938,9 +1842,6 @@ function devPlan() {
   }
   const five = (p.spend && p.spend.last_5h) || {};
   const lim = (progress && progress.limits) || (p.plan && p.plan.limits) || [];
-  const er = p.errands || {}, win = er.window || {}, ever = er.ever || {};
-  const sizes = Object.entries(er.sizes || {}).map(([name, s]) =>
-    `${name} $${(s.max_budget_usd || 0).toFixed(2)} on ${s.model}`).join("   ·   ");
   return facts([
     ["plan", p.plan && p.plan.plan],
     ["the plan's windows", lim.length
@@ -1953,16 +1854,8 @@ function devPlan() {
     ["reading the plan", (progress && progress.limits_read) || ""],
     ["our own count, last 5h", `${five.turns || 0} turns · ${(five.input_tokens || 0).toLocaleString()} in · ` +
       `${(five.output_tokens || 0).toLocaleString()} out` +
-      (five.cost_all_usd ? ` · ~$${five.cost_all_usd.toFixed(2)}` : "") +
-      (five.workers ? ` (${five.workers} errand${five.workers === 1 ? "" : "s"})` : "")],
+      (five.cost_all_usd ? ` · ~$${five.cost_all_usd.toFixed(2)}` : "")],
     ["talking since", p.spend && p.spend.talking_since ? shortWhen(p.spend.talking_since) : ""],
-    ["errand sizes", sizes],
-    ["errand ceiling", er.ceiling
-      ? `$${er.ceiling.spend_usd.toFixed(2)} per ${er.ceiling.hours}h, never more than ${er.ceiling.runs} runs` : ""],
-    ["room left under it", win.room_usd !== undefined
-      ? `$${win.room_usd.toFixed(2)}` + (win.out_now ? ` (${win.out_now} still out)` : "") : ""],
-    ["errands ever", `${ever.sent || 0} sent · $${(ever.spent_usd || 0).toFixed(2)} · ` +
-      `${ever.completed || 0} finished · ${ever.cut_off || 0} cut off`],
   ]);
 }
 
@@ -2140,80 +2033,6 @@ function wireRecall() {
       await pollProgress();
     } catch (e) { $("recall-try-note").textContent = String(e.message || e); t.disabled = false; return; }
     renderRecall(); paintRecall();
-  };
-}
-
-// The digest organ's section: on, its dials, whose model it borrows, and the
-// last run whole. It never loads a model of its own -- one nervous system on
-// the card, and this organ borrows it from the automatic memory.
-function devDigest() {
-  const dg = (progress && progress.digest) || {};
-  const b = dg.borrows || {};
-  const kn = dg.knobs || {}, kb = dg.knob_bounds || {};
-  const knob = (name, label, step, title) => {
-    const bd = kb[name] || {};
-    return `<label title="${esc(title)}">${label} <input class="dknob" data-knob="${name}" type="number" ` +
-      `min="${bd.min != null ? bd.min : ""}" max="${bd.max != null ? bd.max : ""}" step="${step}" ` +
-      `value="${kn[name] != null ? kn[name] : ""}"></label>`;
-  };
-  let html = `<p class="recall-row"><label><input type="checkbox" id="digest-on"${dg.on ? " checked" : ""}> on</label> ` +
-    `<span class="quiet">borrows the automatic memory's model: ${esc(b.label || b.model || "none chosen")}${b.phase ? " · " + esc(b.phase) : ""}</span></p>`;
-  html += `<p class="recall-row knobs">` +
-    knob("floor_chars", "floor, chars", "100", "a report shorter than this passes whole, quietly") +
-    knob("timeout_s", "hard limit, s", "1", "a report never waits longer than this for its paragraph; a miss is said out loud and the report goes whole") +
-    knob("out_tokens", "paragraph, tokens", "10", "how long the paragraph may run") +
-    knob("input_chars", "read at most, chars", "500", "how much of a very long report the model is shown; a cut keeps head and tail and is said in the note") +
-    `<button class="small-btn" id="digest-knobs-set">set</button>` +
-    `<button class="small-btn" id="digest-knobs-reset" title="back to DEFAULTS in server/digest_config.py">defaults</button>` +
-    `<span class="quiet">${esc(MY_NAME)}'s dials — they ride in errands.digest every turn, so it can ask and they move.</span></p>`;
-  const last = dg.last;
-  if (last) {
-    html += `<div class="quiet" style="margin-top:8px">last run${last.at ? " · " + shortWhen(last.at) : ""}${last.late ? " · late — finished after the limit" : ""}</div>` +
-      `<pre>${esc(digestText(last))}</pre>`;
-    if (last.sent) {
-      html += fold("dev:digest-sent", "tool", "what it was sent", "the report, as cut for the model", "",
-        `<pre>${esc(last.sent)}</pre>`);
-    }
-  }
-  html += facts([
-    ["how it works", "a long report is compressed to one paragraph before it enters the working set; the whole text is written beside the run and the path stands on the row's face. Lossy on prose, checked verbatim on figures and paths — one smoothed number and the paragraph is thrown away, said out loud."],
-    ["never digested", "a page that did not complete, salvage, anything with a refusal or an ask on it, a first page under a new specialty, and any send marked whole: true"],
-  ]);
-  html += fold("dev:digest-config", "tool", "what it is told", (dg.config_path || "server/digest_config.py") +
-    " — edit the file; it is read fresh on every report", "",
-    `<pre>${esc(dg.config_text || "")}</pre>`);
-  return html;
-}
-
-function wireDigest() {
-  const on = $("digest-on");
-  if (on) on.onchange = async () => {
-    try {
-      const got = await post("api/digest/settings", { on: on.checked });
-      if (progress) progress.digest = got;
-    } catch (e) { alert(e.message); }
-    renderDev();
-  };
-  const set = $("digest-knobs-set");
-  if (set) set.onclick = async () => {
-    const body = {};
-    for (const el of MAIN.querySelectorAll("input.dknob")) body[el.dataset.knob] = Number(el.value);
-    const onEl = $("digest-on");
-    if (onEl) body.on = onEl.checked;
-    try {
-      const got = await post("api/digest/settings", body);
-      if (progress) progress.digest = got;
-    } catch (e) { alert(e.message); }
-    if (document.activeElement) document.activeElement.blur();
-    renderDev();
-  };
-  const reset = $("digest-knobs-reset");
-  if (reset) reset.onclick = async () => {
-    try {
-      const got = await post("api/digest/settings", { reset: true });
-      if (progress) progress.digest = got;
-    } catch (e) { alert(e.message); }
-    renderDev();
   };
 }
 
@@ -2695,7 +2514,7 @@ function devProviders() {
     `through ${esc(svc.label || "?")}.</p>`;
   if (PROV.chat_paused) html = `<p>${esc(PROV.chat_paused)} Choose a chat model below.</p>`;
   html = `<p><label><input type="checkbox" id="prov-codex-only"${PROV.codex_only ? " checked" : ""}> Codex-only mode</label></p>` +
-    `<p class="quiet">Blocks Claude/Anthropic calls and workers. Saved selections and history stay on disk. Local models remain available.</p>` +
+    `<p class="quiet">Blocks the room's own Claude/Anthropic calls. Saved selections and history stay on disk. Local models remain available.</p>` +
     (PROV.paused || []).map(x => `<p class="quiet"><b>${esc(x.capability)} — paused.</b> ${esc(x.reason)}</p>`).join("") + html;
   if (now && now.price && now.price.known) {
     html += `<p class="quiet">${esc(priceLine(now.price))}` +
@@ -3061,27 +2880,17 @@ function renderDev() {
   if (!state || backingUp) return;
   const a = document.activeElement;
   if (a && /^(SELECT|INPUT|TEXTAREA)$/.test(a.tagName) && $("view-dev").contains(a)) return;
-  const out = ((progress && progress.out) || (workers ? (workers.roster || []).filter((w) => w.status === "running") : []));
-  const handsSub = out.length ? out.length + " out now" : "nobody out";
   const me = (state.prompt || {}).self || {};
   const rc = (progress && progress.recall) || null;
   const recallSub = recallLine(rc).text.replace(/^automatic memory: /, "");
-  const dg = (progress && progress.digest) || null;
-  const digestSub = !dg ? "" : (dg.on
-    ? "on · borrows " + ((dg.borrows && (dg.borrows.label || dg.borrows.model)) || "no model")
-    : "off");
   const pv = (progress && progress.provider) || null;
   const provSub = pv ? pv.label + " \u00b7 " + pv.service_label : "";
   const parts = [
     ["dev:provider", () => dev("dev:provider", "which model " + MY_NAME + " thinks with", provSub,
         `<div id="prov-body">${devProviders()}</div>`)],
-    ["dev:codex", () => dev("dev:codex", "Codex sessions", "",
-        `<button id="tab-codex" class="tab" type="button">Codex tasks</button>`)],
-    ["dev:hands", () => dev("dev:hands", "hands and errands", handsSub, devHands())],
     ["dev:recall", () => dev("dev:recall", "automatic memory", recallSub, devRecallSection())],
     ["dev:models", () => dev("dev:models", "models on disk", modelsSub(), devModels())],
     ["dev:wallpaper", () => dev("dev:wallpaper", "room background", "", devWallpaper())],
-    ["dev:digest", () => dev("dev:digest", "digest", digestSub, devDigest())],
     ["dev:memory", () => dev("dev:memory", MY_NAME + "'s memory right now",
         `${me.messages_loaded ?? "?"} messages \u00b7 ${me.essences_loaded ?? "?"} essences \u00b7 ~${k(me.prompt_tokens_est)} tokens`,
         devMemory())],
@@ -3152,10 +2961,8 @@ function renderDev() {
   }
   const b = $("backup");
   if (b) b.onclick = takeBackup;
-  $("tab-codex").onclick = () => show("codex");
   wireRecall();
   wireProviders();
-  wireDigest();
   wireNotes();
   wireNotebook();
   wireModels();
@@ -4205,32 +4012,27 @@ function render() {
 
 // Each tab keeps its own place on the page.
 let shown = "chat";
-const SCROLL = { chat: null, dev: 0, projects: 0, codex: 0 };
+const SCROLL = { chat: null, dev: 0, projects: 0, sessions: 0 };
 
 function show(which) {
   SCROLL[shown] = MAIN.scrollTop;
-  for (const v of ["chat", "projects", "dev", "codex"]) {
+  for (const v of ["chat", "projects", "sessions", "dev"]) {
     $("view-" + v).classList.toggle("hidden", which !== v);
     const tab = $("tab-" + v);
-    if (tab) tab.classList.toggle("active", which === v || (v === "dev" && which === "codex"));
+    if (tab) tab.classList.toggle("active", which === v);
   }
   shown = which;
   clearInterval(devTimer);
-  if (which === 'codex' && window.refreshCodexTasks) window.refreshCodexTasks();
+  if (window.showSessions) window.showSessions(which === "sessions");
   if (which === "projects") {
     renderProjects();
     refreshProjects().then(renderProjects);
   }
   if (which === "dev") {
     renderDev();
-    refreshWorkers().then(renderDev);
-    devTimer = setInterval(() => refreshWorkers().then(renderDev), 5000);
+    devTimer = setInterval(renderDev, 5000);
   }
   MAIN.scrollTop = SCROLL[which] === null ? MAIN.scrollHeight : SCROLL[which];
-}
-
-async function refreshWorkers() {
-  try { workers = await getJson("api/workers"); } catch (e) { /* ask again later */ }
 }
 
 // The plan gauge is read on the poll, so it changes between renders. Redraw
@@ -4254,17 +4056,10 @@ async function pollProgress() {
   try { progress = await getJson("api/progress"); } catch (e) { /* the next poll asks again */ }
 }
 
-// A turn already running -- one a person started, one a hand woke it for, or one
-// this window did not see begin. Follow it until it ends, then redraw.
-let fallbackPolls = 0;
-
+// A turn already running -- one a person started, one a session woke it for, or
+// one this window did not see begin. Follow it until it ends, then redraw.
 async function watchIfBusy() {
   await pollProgress();
-  // A room started before `out` was sent with the progress: ask the roster
-  // now and then instead, so the line still answers who is away.
-  if (progress && progress.out === undefined && fallbackPolls++ % 5 === 0) {
-    await refreshWorkers();
-  }
   renderRecall();
   if (shown === "dev") paintRecall();
   usageIfMoved();
@@ -4737,6 +4532,7 @@ growBox();
 
 $("tab-chat").onclick = () => show("chat");
 $("tab-projects").onclick = () => show("projects");
+$("tab-sessions").onclick = () => show("sessions");
 $("tab-dev").onclick = () => show("dev");
 $("recall").onclick = () => { OPEN.add("dev:recall"); show("dev"); };
 

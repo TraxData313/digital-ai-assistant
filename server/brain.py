@@ -10,9 +10,9 @@ import threading
 import time
 from pathlib import Path
 
-from . import (clock, db, digest, embed, files, jobs, limits, notebook, notes,
-               people, pictures, projects, providers, recall, search, watch,
-               web, worker, overmind)
+from . import (claude_sessions, clock, db, embed, files, jobs, limits, notebook,
+               notes, people, pictures, projects, providers, recall, search,
+               watch, web, overmind)
 from . import home
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -210,46 +210,6 @@ COMMENTS_OP = {
     "additionalProperties": False,
 }
 
-# A brief in plain words, and how big an errand it is. It writes the words;
-# the size is what they are allowed to cost. Every field present, like the rest.
-WORKER_OP = {
-    "type": "object",
-    "properties": {
-        "op": {"type": "string", "enum": ["send", "tell", "dismiss", "answer"]},
-        "name": {"type": ["string", "null"]},
-        # `answer` only: which stopped hand's question, and the assistant's
-        # word on it. `allow` true lets that one refused call through, once.
-        "ask": {"type": ["string", "null"]},
-        "allow": {"type": ["boolean", "null"]},
-        "role": {"type": ["string", "null"]},
-        "size": {"type": ["string", "null"]},
-        # Which of the owner's repos an angel hand works in. `null` is this
-        # room, so every send written before this existed still means what it
-        # meant.
-        "repo": {"type": ["string", "null"]},
-        # A plain folder under Documents instead: no git, no worktree, and
-        # the room walks it before and after each page. `create` true has a
-        # missing one made under Documents/<assistant name> -- the
-        # assistant's own shelf of projects.
-        "folder": {"type": ["string", "null"]},
-        "create": {"type": "boolean"},
-        "job": {"type": ["string", "null"]},
-        "title": {"type": ["string", "null"]},
-        "brief": {"type": ["string", "null"]},
-        "text": {"type": ["string", "null"]},
-        "why": {"type": ["string", "null"]},
-        "narrate": {"type": "boolean"},
-        # `send` only: this page's report is handed over whole -- the
-        # digest never stands in for it. Per send, not per hand: whether the
-        # shape or the detail is wanted is known at dispatch.
-        "whole": {"type": "boolean"},
-    },
-    "required": ["op", "name", "ask", "allow", "role", "size", "repo",
-                 "folder", "create", "job", "title", "brief", "text", "why",
-                 "narrate", "whole"],
-    "additionalProperties": False,
-}
-
 # A job: the overview object, one pointer per piece of work. Ops on state in
 # data/jobs.json, never rows -- except open, decide and close, which each
 # write one row in its words so the trail keeps the decision where it happened.
@@ -415,7 +375,6 @@ RESPONSE_SCHEMA = {
         "files": {"type": "array", "items": FILES_OP},
         "web": {"type": "array", "items": WEB_OP},
         "comments": {"type": "array", "items": COMMENTS_OP},
-        "worker": {"type": "array", "items": WORKER_OP},
         "job": {"type": "array", "items": JOB_OP},
         "project": {"type": "array", "items": PROJECT_OP},
         "clock": {"type": "array", "items": CLOCK_OP},
@@ -442,7 +401,7 @@ RESPONSE_SCHEMA = {
     "required": ["reply", "to", "look_first", "looking", "spark",
                  "budget_target_tokens",
                  "drop", "essences", "notebook", "fetch", "search", "shelf", "files",
-                 "web", "comments", "worker", "job", "project", "clock",
+                 "web", "comments", "job", "project", "clock",
                  "restart", "watch", "note"],
     "additionalProperties": False,
 }
@@ -577,7 +536,7 @@ def harness_text(voice_on: bool = False, sound: bool = False, events=()) -> str:
                 .replace("{{voice_section}}", VOICE_ON_SECTION if voice_on else VOICE_OFF_SECTION)
                 .replace("{{sound_section}}", sound_sections(voice_on, sound, events))
                 .replace("{{owner}}", home.OWNER_NAME)
-                + home.fill(overmind.INSTRUCTIONS + notebook.INSTRUCTIONS))
+                + home.fill(SESSION_INSTRUCTIONS()))
     return operation_harness(voice_on, sound, events)
 
 
@@ -586,20 +545,15 @@ def operation_harness(voice_on: bool = False, sound: bool = False, events=()) ->
     harness = home.read_prompt("harness_prompt.md")
     if providers.codex_only():
         # Filter only the room's capability instructions, never Spark or notes.
-        for heading in ("## `errands`", "### `worker`", "## The standing terms"):
-            harness = re.sub(r"(?ms)^" + re.escape(heading)
-                             + r"[^\n]*\n.*?(?=^#{1,3} |\Z)", "", harness)
-        harness = re.sub(r"(?m)^- `worker`[^\n]*\n(?:  [^\n]*\n)*", "", harness)
         harness = re.sub(r'(?m)^- `\{"op": "search", "query"[^\n]*\n(?:  [^\n]*\n)*', "", harness)
         harness = harness.replace(
             "Since 6 September I\n  can be more than one: Opus, Fable or Sonnet on " + home.OWNER_NAME + "'s plan, Terra or Sol at\n  OpenAI, or anything OpenRouter reaches.",
             "The active service and model are named here.")
         harness = re.sub(r"(?ms)^## Where I am\n.*\Z", "", harness)
         harness += ("\n## Available capabilities\n\nCodex-only mode is enabled. "
-                    "Claude workers and model-backed web search are paused. `web` supports `read`. "
+                    "Model-backed web search is paused. `web` supports `read`. "
                     "`paused_capabilities` names any other paused functions and their reasons. "
-                    "Historical worker records remain in data/workers/ and data/hands.json, "
-                    "readable with files on demand. Memory, trails, recall, projects, clock, "
+                    "Memory, trails, recall, projects, clock, "
                     "senses and conversation routing retain their usual operations. "
                     "`plan` describes the selected subscription only, with no historical gauge fallback.\n")
     harness = harness.replace(
@@ -617,17 +571,18 @@ def operation_harness(voice_on: bool = False, sound: bool = False, events=()) ->
     # reason: the number it is told and the number the room refuses on
     # have to be one number.
     harness = harness.replace("{{spark_max}}", str(MAX_SPARK_CHARS))
-    # The standing terms of its errands, rendered from the same constants the
-    # dispatcher refuses on. In here rather than in the per-turn object so
-    # they ride the cached half of its prompt; the bytes only move when a
-    # constant does, and then the cache is rebuilt once.
-    if not providers.codex_only():
-        harness = harness.replace("{{standing_terms}}", json.dumps(
-            worker.standing_terms(), indent=1, ensure_ascii=False))
     # The notebook's instructions ride in from its own module rather than
     # from the harness file, so a home with its own copy of the harness is
     # told about it too.
-    return home.fill(harness + overmind.INSTRUCTIONS + notebook.INSTRUCTIONS)
+    return home.fill(harness + SESSION_INSTRUCTIONS())
+
+
+def SESSION_INSTRUCTIONS() -> str:
+    """What rides in from modules rather than from the harness file, so a
+    home with its own copy of the harness is told about them too."""
+    return ((overmind.INSTRUCTIONS if overmind.offered() else "")
+            + (claude_sessions.INSTRUCTIONS if claude_sessions.offered() else "")
+            + notebook.INSTRUCTIONS)
 
 
 def system_prompt(voice_on: bool = False, sound: bool = False, events=()) -> str:
@@ -833,14 +788,17 @@ def response_schema(voice_on: bool = True, sound: bool = False) -> dict:
     that does nothing is worse than no field, because it would write into it
     and believe it had been heard that way."""
     schema = json.loads(json.dumps(RESPONSE_SCHEMA))
-    schema['properties']['codex'] = {'type': 'array', 'items': overmind.OP}
-    schema['required'].append('codex')
+    # Each kind of session only while its owner's switch is on.
+    if overmind.offered():
+        schema['properties']['codex'] = {'type': 'array', 'items': overmind.OP}
+        schema['required'].append('codex')
+    if claude_sessions.offered():
+        schema['properties']['claude'] = {'type': 'array', 'items': claude_sessions.OP}
+        schema['required'].append('claude')
     if voice_on and sound:
         schema['properties']['sound'] = {'type': ['string', 'null']}
         schema['required'].append('sound')
     if providers.codex_only():
-        schema["properties"].pop("worker")
-        schema["required"].remove("worker")
         schema["properties"]["web"]["items"]["properties"]["op"]["enum"] = ["read"]
     return schema
 
@@ -1015,9 +973,8 @@ def spend(conn) -> dict:
         return rows
 
     parsed = read(home.SELF)
-    # Its workers spend out of the same pocket. Counting only its own turns
-    # made the errands look free, which is the one way a ceiling gets quietly
-    # overrun.
+    # The hands it once sent spent out of the same pocket, and their rows
+    # still hold what they cost; the history keeps counting them.
     sent = read("worker")
 
     def whole(m, key):
@@ -1152,8 +1109,7 @@ def build_report(conn, essences) -> dict:
     # row, and looking only at the last answer would step straight over it.
     turn = db.last_reply_row(conn)
     reach = searched = shelf = read = outside = said_back = codex_result = None
-    booked = None
-    sent = []
+    claude_result = booked = None
     for ev in db.events_since(conn, turn):
         if ev["kind"] == "files":
             read = ev["detail"]
@@ -1163,13 +1119,6 @@ def build_report(conn, essences) -> dict:
             problems.extend((ev["detail"] or {}).get("problems") or [])
         elif ev["kind"] == "fetch":
             reach = ev["detail"]
-            problems.extend((ev["detail"] or {}).get("problems") or [])
-        elif ev["kind"] == "worker":
-            # The account of each page that came home: every step it took, what
-            # it cost, and how it ended. The report itself is a row; this is the
-            # log of it, here rather than in its working set because it is read
-            # once. A list, because three can come home while it is busy.
-            sent.append(ev["detail"])
             problems.extend((ev["detail"] or {}).get("problems") or [])
         elif ev["kind"] == "search":
             searched = ev["detail"]
@@ -1186,6 +1135,9 @@ def build_report(conn, essences) -> dict:
         elif ev['kind'] == 'codex':
             codex_result = ev['detail']
             problems.extend((ev['detail'] or {}).get('problems') or [])
+        elif ev['kind'] == 'claude':
+            claude_result = ev['detail']
+            problems.extend((ev['detail'] or {}).get('problems') or [])
         elif ev["kind"] == "notebook":
             # What each of its notebook operations did, one line apiece.
             booked = (ev["detail"] or {}).get("lines")
@@ -1197,7 +1149,7 @@ def build_report(conn, essences) -> dict:
     # reach that tripped over it. Saying it twice is noise, not honesty.
     return {"turn": turn, "reach": reach, "search": searched, "shelf": shelf,
             "files": read, "web": outside, "comments": said_back,
-            "worker": sent or None, 'codex': codex_result,
+            'codex': codex_result, 'claude': claude_result,
             "notebook": booked,
             "problems": list(dict.fromkeys(problems))}
 
@@ -1241,23 +1193,12 @@ def plan_block(conn, model=None) -> dict:
 
 
 def _jobs_block() -> list:
-    """Its open jobs, with the hands on each and who is out right now, so the
-    state can say waiting-on-a-hand truthfully. Never raises into a turn."""
+    """Its open jobs. Never raises into a turn."""
     try:
         if providers.codex_only():
             from . import prompt_reference
             return prompt_reference.jobs_summary()
-        by = {}
-        for h in worker.hands_kept():
-            jb = str(h.get("job") or "").strip().lower()
-            if jb:
-                by.setdefault(jb, []).append(h.get("name"))
-        away = set()
-        for o in worker.out_now() or []:
-            if isinstance(o, dict) and o.get("name"):
-                away.add(o["name"])
-        view = jobs.for_prompt(by, away)
-        return view
+        return jobs.for_prompt()
     except Exception:
         return []
 
@@ -1451,12 +1392,6 @@ def build_prompt(conn, voice_on: bool = False, found=None, woken=None,
         # the book is against its cap.
         "notebook": _notebook_block(conn),
         "out_of_reach": db.dropped_index(conn, DROPPED_INDEX_LIMIT),
-        # What an errand costs, in figures, every turn. It was prose in it
-        # instructions until the caps moved underneath it and nothing told it.
-        # The digest organ's dials ride beside the terms, for the same
-        # reason: they are its own to move by saying so.
-        "errands": (worker.terms(conn) if providers.codex_only()
-                    else dict(worker.terms(conn), digest=digest.for_her())),
         # The assistant's jobs: one pointer per piece of work -- name, state,
         # cost against ceiling, links left, and its own last decision. Never
         # the goal read back at it.
@@ -1470,7 +1405,9 @@ def build_prompt(conn, voice_on: bool = False, found=None, woken=None,
         # against the ceiling, what it last saw. Zeros and all -- quiet must
         # be legible as quiet, the same rule as the automatic memory.
         "watch": watch.for_prompt(),
-        "codex_sessions": overmind.for_prompt(),
+        **({"codex_sessions": overmind.for_prompt()} if overmind.offered() else {}),
+        **({"claude_sessions": claude_sessions.for_prompt()}
+           if claude_sessions.offered() else {}),
         # The assistant's clock: its own free time, what it would fire next,
         # any invitation standing, and today's firings against the backstop. Zeros and all,
         # for the same reason the senses show theirs -- a clock that declined
@@ -1948,7 +1885,6 @@ def _extract(stdout: str, expect: str = "reply") -> dict:
     payload.setdefault("essences", [])
     payload.setdefault("fetch", [])
     payload.setdefault("search", [])
-    payload.setdefault("worker", [])
     payload.setdefault("job", [])
     payload.setdefault("project", [])
     payload.setdefault("shelf", [])
@@ -2399,6 +2335,9 @@ def run_turn(conn, model: str = DEFAULT_MODEL,
     if woken and woken.get('by') == 'codex':
         db.add_event(conn, reply_id, 'codex', 'Codex task reply woke ' + home.NAME,
                      {'summary': 'Codex task reply woke ' + home.NAME, 'woken': woken, 'before_reply': True})
+    if woken and woken.get('by') == 'claude':
+        db.add_event(conn, reply_id, 'claude', 'A Claude session woke ' + home.NAME,
+                     {'summary': 'A Claude session woke ' + home.NAME, 'woken': woken, 'before_reply': True})
 
     # An answer with nothing in it is not a quiet turn, it is a turn where a
     # person was left standing there. Whatever caused it, it is said rather
@@ -2412,16 +2351,14 @@ def run_turn(conn, model: str = DEFAULT_MODEL,
 
     # Said out loud here, the moment the words exist, and before a single piece
     # of housekeeping. Everything below this line -- essences, the Spark, a
-    # reach outside, an errand -- is the assistant tidying up after itself,
+    # reach outside, a session started -- is the assistant tidying up after itself,
     # and none of it changes a word of what is about to be heard. Kept at the
     # bottom, it put seconds between the reply landing on screen and the voice
     # starting, so the reader was halfway down before the voice began.
     #
-    # A waking is silent unless the assistant asked for it. Every errand it
-    # sends otherwise comes back through the speakers, and a morning of
-    # findings read out loud is more than anyone wants to sit through. It can
-    # still ask -- `narrate` on the errand -- for the one that is worth an
-    # interruption.
+    # A waking is silent unless the waking asked for it. Every session reply
+    # would otherwise come back through the speakers, and a morning of
+    # findings read out loud is more than anyone wants to sit through.
     if quiet:
         heard = {"spoken": False,
                  "reason": ("a line to angel me is not read out"
@@ -2458,6 +2395,9 @@ def run_turn(conn, model: str = DEFAULT_MODEL,
     codex_result = overmind.apply(answer.get('codex'), say=say)
     if codex_result:
         db.add_event(conn, reply_id, 'codex', codex_result['summary'], codex_result)
+    claude_result = claude_sessions.apply(answer.get('claude'), say=say)
+    if claude_result:
+        db.add_event(conn, reply_id, 'claude', claude_result['summary'], claude_result)
 
     made, edited, removed, renamed, snags = _apply_essences(
         conn, answer.get("essences"), reply_id, say,
@@ -2516,15 +2456,14 @@ def run_turn(conn, model: str = DEFAULT_MODEL,
     if shelf:
         db.add_event(conn, reply_id, "shelf", shelf["summary"], shelf)
 
-    # Its own eyes on the disk. Nothing here can change a file, so unlike the
-    # errand below it costs only the reading.
+    # Its own eyes on the disk. Nothing here can change a file, so it costs
+    # only the reading.
     looked_at = _apply_files(conn, answer.get("files"), say=say)
     if looked_at:
         db.add_event(conn, reply_id, "files", looked_at["summary"], looked_at)
 
-    # Its reach outside. The event carries what it cost, and that is how a search
-    # counts against the same window ceiling its errands do -- one number bounds
-    # everything that leaves this machine.
+    # Its reach outside. The event carries what it cost, and that is how a
+    # search counts against its window ceiling.
     outside = _apply_web(conn, answer.get("web"), say=say)
     if outside:
         db.add_event(conn, reply_id, "web", outside["summary"], outside)
@@ -2549,17 +2488,6 @@ def run_turn(conn, model: str = DEFAULT_MODEL,
     # the reason the job above exists.
     minded = _apply_projects(conn, answer.get("project"), reply_id, say=say)
     for snag in minded.get("problems") or []:
-        say(snag, "snag")
-        db.add_event(conn, reply_id, "snag", snag)
-
-    # Last, because it is the only one that goes outside. It does not wait:
-    # the errand runs on its own thread and writes its own account when it
-    # comes home, so nothing here is logged yet except that it sent someone.
-    sent = _apply_worker(conn, answer.get("worker"), reply_id, say=say,
-                         chain=int((woken or {}).get("chain") or 0))
-    if (sent or {}).get("ended") == "paused":
-        db.add_event(conn, reply_id, "worker", sent["summary"], sent)
-    for snag in (sent or {}).get("problems") or []:
         say(snag, "snag")
         db.add_event(conn, reply_id, "snag", snag)
 
@@ -2622,7 +2550,6 @@ def run_turn(conn, model: str = DEFAULT_MODEL,
             "shelf": shelf,
             "files": looked_at,
             "web": outside,
-            "worker": sent,
             "snags": snags,
             "spark": spark_change,
             "voice": heard,
@@ -2698,13 +2625,14 @@ def _look_round(conn, answer, number: int, say, aloud=False) -> dict:
     record["files"] = _apply_files(conn, answer.get("files"), say=say)
     record["web"] = _apply_web(conn, answer.get("web"), say=say)
     record['codex'] = overmind.apply(answer.get('codex'), looking=True, say=say)
+    record['claude'] = claude_sessions.apply(answer.get('claude'), looking=True, say=say)
     # Reads are exactly what a look round is for; a post sent from one is
     # refused inside, not here, so the refusal reaches it in its own words.
     record["comments"] = _apply_comments(conn, answer.get("comments"),
                                          say=say, looking=True)
 
     if not any(record[k] for k in ("reach", "search", "shelf", "files", "web",
-                                   "comments", "codex")):
+                                   "comments", "codex", "claude")):
         record["nothing_asked"] = (
             "I said I wanted to look first and then asked for nothing, so that "
             "round bought me a call and no information. If I do not need "
@@ -2738,7 +2666,8 @@ def _keep_the_looking(conn, looked, reply_id: int) -> list:
         head = "while looking, round " + str(record["round"]) + ": "
         for key, kind in (("reach", "fetch"), ("search", "search"),
                           ("shelf", "shelf"), ("files", "files"),
-                          ("web", "web"), ("comments", "comments"), ("codex", "codex")):
+                          ("web", "web"), ("comments", "comments"), ("codex", "codex"),
+                          ("claude", "claude")):
             report = record.get(key)
             if report:
                 # The round it belonged to, and why it went: the room draws
@@ -3456,54 +3385,6 @@ def _apply_comments(conn, specs, say=None, looking=False):
                           if problems else "")}
 
 
-# Set by `app.py`. Called, off any turn, when a worker the assistant sent comes
-# home. This is how the errand wakes it: it was the one waiting for it, so it
-# is the one the errand comes back to, without a person having to say so.
-WORKER_CAME_HOME = None
-
-
-def keep_worker_report(conn, out: dict, fallback_row=None) -> int:
-    """Where a worker's words go, whoever they came back to.
-
-    The report is a row because it is a thing the assistant can think with;
-    the account of the run is an event, hung off its latest reply rather than
-    the one that sent it, so an errand that came home while a person was
-    talking is still read rather than left behind an old line."""
-    anchor = db.last_reply_row(conn) or fallback_row
-    if out.get("report") or out.get("spent"):
-        # The digest organ: a long report may enter its working set as a
-        # paragraph, the whole text kept on disk. Standing aside is quiet;
-        # running or missing is an event. It must never cost it the report.
-        dig = None
-        try:
-            dig = digest.stand_in(out)
-        except Exception as exc:
-            dig = {"missed": ("the digest organ broke on the way ("
-                              + type(exc).__name__ + ": " + str(exc) + ")")}
-        out["row"] = db.add_row(
-            conn, "worker", worker.report_text(out, digest=dig),
-            title=out.get("title"),
-            # An errand is its hand, not its voice, and it runs on whatever
-            # its size buys -- haiku for a small one, opus for a large. So the
-            # column names the errand's own mind, which is a different answer
-            # from its own this turn and worth being able to ask separately.
-            by_model=providers.resolve(out.get("model"))["key"]
-            if out.get("model") else None,
-            meta={"run": out.get("run"), "size": out.get("size"),
-                  "model": out.get("model"), "ended": out.get("ended"),
-                  "cost_usd": out.get("cost_usd"), "brief": out.get("brief"),
-                  "name": out.get("name"), "role": out.get("role"),
-                  "page": out.get("page"), "session": out.get("session"),
-                  "branch": out.get("branch"),
-                  "digested": bool(dig and dig.get("paragraph")) or None,
-                  "digest_path": (dig or {}).get("path"),
-                  "full_chars": (dig or {}).get("full_chars")})
-        if dig is not None:
-            db.add_event(conn, anchor, "digest", digest.summary(dig), dig)
-    db.add_event(conn, anchor, "worker", out["summary"], out)
-    return out.get("row")
-
-
 def _apply_jobs(conn, ops, reply_id: int, say=None) -> dict:
     """Open, decide, widen, close. The state moves in data/jobs.json; a row
     is written only where the trail needs a place to point -- open, decide
@@ -3566,7 +3447,7 @@ def _apply_jobs(conn, ops, reply_id: int, say=None) -> dict:
                             "done.")
             continue
         done.append(line)
-        say(line, "worker")
+        say(line)
         db.add_event(conn, reply_id, "job", line, dict(op_spec))
     return {"done": done, "problems": problems}
 
@@ -3727,363 +3608,9 @@ def _apply_projects(conn, ops, reply_id: int, say=None) -> dict:
                             "done.")
             continue
         done.append(line)
-        say(line, "worker")
+        say(line)
         db.add_event(conn, reply_id, "project", line, dict(op_spec))
     return {"done": done, "problems": problems}
-
-
-def _apply_worker(conn, specs, reply_id: int, say=None, chain: int = 0):
-    """Send, tell, or dismiss. Do **not** wait for anyone.
-
-    It has already spoken by the time this runs, and an errand that took it
-    turn hostage made a two-second answer take ninety. So each page goes off on
-    its own thread: the turn ends, it says it has sent someone, and when the
-    page comes home it writes what it found and knocks on it.
-
-    Three operations, one shape:
-
-    * `send` -- a new hand, with a name it gives, or a nameless errand as
-      before. Its first page is the brief.
-    * `tell` -- one more page to a hand it keeps. The hand has the whole
-      thread in front of it; it has only what it told it.
-    * `dismiss` -- the thread is closed. Nothing is deleted: the transcript
-      stays, the branch stays, and the hand can be resumed by id if it asks.
-
-    The report becomes a row, so it can fold it into an essence like anything
-    else. The account of the run -- every step, what it cost, how it ended --
-    goes to the events and reaches it in `report.worker`."""
-    specs = [sp for sp in (specs or []) if sp]
-    if not specs:
-        return None
-
-    if providers.codex_only():
-        return {"summary": providers.CLAUDE_PAUSED, "ended": "paused",
-                "sent": [], "dismissed": [], "out": False, "spent": False,
-                "problems": [providers.CLAUDE_PAUSED], "pending": specs}
-
-    say = say or (lambda *a, **k: None)
-    refused = specs[worker.MAX_WORKERS_PER_TURN:]
-    specs = specs[:worker.MAX_WORKERS_PER_TURN]
-
-    # This turn's place in the chain, and whether a page sent now is still
-    # allowed to wake it when it comes home.
-    link = chain + 1
-    may_wake = link <= worker.MAX_CHAIN
-
-    problems = []
-    if refused:
-        problems.append(
-            "I asked for " + str(len(refused) + len(specs)) + " things of my "
-            "hands on one turn and " + str(worker.MAX_WORKERS_PER_TURN)
-            + " is the most I get, so " + str(len(refused)) + " of them were "
-            "not done at all. They are unasked, not lost.")
-    if not may_wake:
-        problems.append(
-            "This is link " + str(link) + " of a chain and I get "
-            + str(worker.MAX_CHAIN) + " without " + home.OWNER_NAME + ", so what "
-            "I send now will not wake me. It runs, and it will be waiting in "
-            "what I am handed the next time " + home.OWNER_NAME + " says "
-            "something. If I need it sooner I have to say so to "
-            + home.OWNER_NAME + ".")
-    elif link == worker.MAX_CHAIN:
-        problems.append(
-            "This is my last link without " + home.OWNER_NAME + ": it will wake "
-            "me once more, and anything I send from that waking will have to "
-            "wait for " + home.OWNER_NAME + ".")
-
-    sent, dismissed = [], []
-    kept = {h["name"]: h for h in worker.hands_kept()}
-
-    for spec in specs:
-        op = str(spec.get("op") or "send").strip().lower()
-        name = (spec.get("name") or "").strip()
-        if name:
-            name = re.sub(r"[^a-z0-9_-]+", "-", name.lower()).strip("-")[:40]
-        narrate = bool(spec.get("narrate"))
-        title = db.tidy_title(spec.get("title"))
-
-        if op == "answer":
-            # A hand is standing still with a refused call in its hand,
-            # waiting on my word. Nothing is sent and nothing is spent: this
-            # is one line into a wait that is already open, and a yes is for
-            # that one call only.
-            ask_id = (spec.get("ask") or "").strip()
-            allow = bool(spec.get("allow"))
-            line = (spec.get("text") or spec.get("why") or "").strip() or None
-            if not ask_id:
-                problems.append(
-                    "I answered a hand's question without saying which one. "
-                    "Nothing was answered; the ids are in errands.asking.")
-                continue
-            got = worker.answer_ask(ask_id, allow, line)
-            if not got.get("ok"):
-                problems.append(
-                    "I answered question " + ask_id + " and " + str(got.get("why"))
-                    + ". Nothing was changed.")
-                continue
-            note = (("said yes to " + str(got.get("name") or "a hand")
-                     + " for one call: " if allow else
-                     "said no to " + str(got.get("name") or "a hand") + ": ")
-                    + str(got.get("what"))[:120])
-            dismissed.append(note)
-            say(note, "worker")
-            continue
-
-        if op == "dismiss":
-            h = kept.get(name)
-            if not h:
-                problems.append(
-                    "I dismissed '" + (name or "?") + "', which is not a hand I "
-                    "keep. Nothing was done.")
-                continue
-            if h.get("status") == "out":
-                problems.append(
-                    "I dismissed " + name + " while its page " + str(h.get("pages"))
-                    + " is still out. It was marked dismissed; the page will "
-                    "still come home and be kept, but I will not be woken for it.")
-            gone = worker.remove_worktree(h.get("cwd")) if h.get("cwd") else {}
-            worker.hand_update(name, status="dismissed", dismissed=db.now(),
-                               why_dismissed=spec.get("why"),
-                               worktree_removed=bool(gone.get("removed")))
-            kept.pop(name, None)
-            note = ("dismissed " + name
-                    + (" and its worktree was removed" if gone.get("removed")
-                       else (" -- its worktree was kept: " + str(gone.get("why"))
-                             if h.get("cwd") else "")))
-            if h.get("branch"):
-                note += "; its branch " + h["branch"] + " stays"
-            dismissed.append(note)
-            say(note, "worker")
-            continue
-
-        if op == "tell" and name == "angel":
-            # Not a hand: the interactive angel me, if one is listening at the
-            # door. The line is written down addressed to it and collected by
-            # `python -m server.angel listen`; nothing is dispatched and nothing
-            # is spent. Whether anyone collects it is something it finds out by
-            # being answered, or not.
-            text = (spec.get("text") or spec.get("brief") or "").strip()
-            if not text:
-                problems.append("I told angel nothing at all, so nothing was left.")
-                continue
-            row = db.add_row(conn, "tell", text,
-                             meta={"to": "angel", "narrate": narrate, "op": op,
-                                   "why": spec.get("why")})
-            dismissed.append("left a line for angel me at the door, row #"
-                             + str(row) + "; it waits there until it is collected")
-            say(dismissed[-1], "worker")
-            continue
-
-        if op == "tell":
-            h = kept.get(name)
-            if not h:
-                problems.append(
-                    "I told '" + (name or "?") + "' something, but that is not "
-                    "a hand I keep" + (" any more" if worker.hand_get(name)
-                                       else "") + ". Nothing was sent. The "
-                    "hands I keep are in `errands.hands`.")
-                continue
-            if h.get("status") == "out":
-                problems.append(
-                    "I told " + name + " something while its page "
-                    + str(h.get("pages")) + " is still out. A hand takes one "
-                    "page at a time, so nothing was sent; I can say it again "
-                    "when it comes home.")
-                continue
-            text = (spec.get("text") or spec.get("brief") or "").strip()
-            if not text:
-                problems.append("I told " + name + " nothing at all, so nothing "
-                                "was sent.")
-                continue
-            # A hand keeps the job it was sent with; a tell reserves the next
-            # page under that job's ceiling the same way a send did.
-            hand_job = str(h.get("job") or "").strip() or None
-            asked_job = str(spec.get("job") or "").strip() or None
-            if asked_job and (not hand_job
-                              or asked_job.lower() != hand_job.lower()):
-                problems.append(
-                    "I put the job '" + asked_job + "' on a tell to " + name
-                    + ", but a hand keeps the job it was sent with"
-                    + (" (" + hand_job + ")" if hand_job else " (it has none)")
-                    + ". The page went under its own.")
-            job_cap = 0.0
-            if hand_job and not jobs.get_open(hand_job):
-                # The job closed while the hand lived on: the page still goes,
-                # billed to nothing -- a closed job stays closed.
-                hand_job = None
-            if hand_job:
-                job_cap = worker.page_cap_usd(h.get("role"), h.get("size"))
-                took = jobs.commit(hand_job, job_cap)
-                if not took["ok"]:
-                    problems.append(took["why"])
-                    continue
-            spec = dict(spec, brief=text, title=title or h.get("title"),
-                        _job=hand_job, _job_cap=job_cap)
-            hand = h
-        elif op == "send":
-            brief = (spec.get("brief") or spec.get("text") or "").strip()
-            role = str(spec.get("role") or worker.DEFAULT_ROLE).strip().lower()
-            job = str(spec.get("job") or "").strip() or None
-            if job and not jobs.get_open(job):
-                problems.append(
-                    "I named a job for " + (name or "an errand") + ", and "
-                    + jobs.why_no_open(job) + " Nothing was sent.")
-                continue
-            if name in worker.RESERVED_NAMES:
-                problems.append(
-                    "'" + name + "' is a reserved name -- " + ", ".join(
-                        worker.RESERVED_NAMES) + " are not names I can give a "
-                    "hand. Nothing was sent; I can send it under another name.")
-                continue
-            if name and name in kept:
-                problems.append(
-                    "I already keep a hand called " + name + ". Nothing was "
-                    "sent -- I can `tell` that one, or dismiss it first.")
-                continue
-            if role not in worker.ROLES:
-                problems.append(
-                    "'" + role + "' is not a role there is; the roles are "
-                    + ", ".join(worker.ROLES) + ". It was sent as "
-                    + worker.DEFAULT_ROLE + " and this is me saying so.")
-                role = worker.DEFAULT_ROLE
-            if worker.ROLES[role]["where"] == "worktree" and not name:
-                problems.append(
-                    "A hand with hands has to have a name, because it is kept "
-                    "and talked to again. Nothing was sent; I can send it "
-                    "with one.")
-                continue
-            # Which repo, settled here, before a hand is written down as kept:
-            # a name that is not a repo I can reach means nobody is sent, and I
-            # am told why in words rather than finding a hand in the wrong place.
-            wanted_repo = (spec.get("repo") or "").strip()
-            if wanted_repo:
-                where_repo = worker.resolve_repo(wanted_repo)
-                if not where_repo.get("ok"):
-                    problems.append(
-                        "I asked for a hand in '" + wanted_repo + "' and "
-                        + str(where_repo.get("why")) + " Nothing was sent.")
-                    continue
-                if worker.ROLES[role]["where"] != "worktree":
-                    problems.append(
-                        "I named the repo '" + wanted_repo + "' for a "
-                        "read-shaped hand, and only a hand with hands gets a "
-                        "worktree -- a reader reads this folder. It was sent "
-                        "that way and this is me saying so.")
-            # The job's reservation goes on last, after every cheaper refusal
-            # has had its chance -- a page refused for its name must not
-            # leave a hold on the job's ceiling behind it.
-            job_cap = 0.0
-            if job:
-                job_cap = worker.page_cap_usd(
-                    role, str(spec.get("size") or worker.DEFAULT_SIZE).lower())
-                took = jobs.commit(job, job_cap)
-                if not took["ok"]:
-                    problems.append(took["why"])
-                    continue
-            hand = None
-            if name:
-                hand = worker.hand_update(
-                    name, role=role,
-                    size=str(spec.get("size") or worker.DEFAULT_SIZE).lower(),
-                    title=title, status="kept", pages=0, spent_usd=0,
-                    created=db.now(), why=spec.get("why"), job=job)
-                kept[name] = hand
-            spec = dict(spec, brief=brief, role=role, repo=wanted_repo or None,
-                        _job=job, _job_cap=job_cap)
-        else:
-            problems.append("'" + op + "' is not an operation I have on hands; "
-                            "send, tell and dismiss are. Nothing was done.")
-            continue
-
-        # What it said to it is written down as its own, addressed: a `tell` row.
-        # It is how its own record shows who it said a thing to, rather than a
-        # line that looks as though it was said to the room.
-        if name:
-            db.add_row(conn, "tell", spec["brief"],
-                       meta={"to": name, "page": int(hand.get("pages") or 0) + 1,
-                             "narrate": narrate, "op": op, "why": spec.get("why")})
-
-        def errand(spec=spec, hand=hand, name=name, narrate=narrate):
-            """Off the turn, and on its own. Nothing here may raise into it."""
-            c = db.connect()
-            out = None
-            try:
-                out = worker.send(c, spec, sent_by=home.SELF, hand=hand)
-                out["problems"] = (out.get("problems") or [])
-                out["chain"] = link
-                out["narrate"] = narrate
-                keep_worker_report(c, out, reply_id)
-            except Exception as exc:
-                try:
-                    db.add_event(c, reply_id, "snag",
-                                 ("A page to " + name if name else "An errand of "
-                                  "mine") + " broke on its way out ("
-                                 + type(exc).__name__ + ": " + str(exc)
-                                 + "). Nothing came back.")
-                    if name:
-                        worker.hand_update(name, status="kept")
-                except Exception:
-                    pass
-                out = None
-            finally:
-                # The page is home (or dead): the job's reservation comes off
-                # and what it truly cost goes on -- a broken page settles at
-                # zero so nothing holds the ceiling forever.
-                if spec.get("_job"):
-                    try:
-                        jobs.settle(spec["_job"], spec.get("_job_cap") or 0,
-                                    (out or {}).get("cost_usd") or 0)
-                    except Exception:
-                        pass
-                c.close()
-            still_kept = not name or (worker.hand_get(name) or {}).get(
-                "status") != "dismissed"
-            if out and still_kept and WORKER_CAME_HOME:
-                # A job page wakes it on the job's own links, spent at the
-                # moment the waking is actually bought; a jobless one keeps
-                # the old chain of two. At zero the report has landed and
-                # simply waits.
-                jb = spec.get("_job")
-                allowed = jobs.spend_link(jb) if jb else may_wake
-                if allowed:
-                    try:
-                        WORKER_CAME_HOME(out, link)
-                    except Exception:
-                        pass
-
-        threading.Thread(target=errand, daemon=True).start()
-        who = (name + (", page " + str(int(hand.get("pages") or 0) + 1))
-               if name else (title or "an errand"))
-        say("sent " + who + "; not waiting for it", "worker")
-        if not name:
-            # A hand with a name leaves it `tell` row behind; a nameless errand
-            # leaves nothing until it comes home. This is the one mark that it
-            # went at all, so the room can show it where it happened. Not read
-            # back to it: `build_report` does not know the kind.
-            db.add_event(conn, reply_id, "sent",
-                         "sent an errand: " + (title or "(untitled)"),
-                         {"name": None, "title": title, "role": spec.get("role"),
-                          "size": spec.get("size"), "page": 1,
-                          "brief": spec.get("brief"), "why": spec.get("why"),
-                          "narrate": narrate})
-        sent.append({"name": name or None, "title": title,
-                     "role": spec.get("role") or (hand or {}).get("role"),
-                     "page": int((hand or {}).get("pages") or 0) + 1,
-                     "brief": spec.get("brief"), "narrate": narrate})
-
-    summary_bits = []
-    if sent:
-        summary_bits.append("sent " + ", ".join(
-            (s["name"] + " p" + str(s["page"])) if s["name"] else (s["title"] or "an errand")
-            for s in sent) + ", still out")
-    summary_bits.extend(dismissed)
-    if not summary_bits:
-        summary_bits.append("nothing was sent")
-    return {"summary": "; ".join(summary_bits), "sent": sent,
-            "dismissed": dismissed, "out": bool(sent),
-            "problems": problems, "spent": False, "chain": link,
-            "ended": "running" if sent else "nothing sent",
-            "woke_her": may_wake and bool(sent)}
 
 
 def _vector(conn, essence_id: int, snags: list) -> None:

@@ -60,8 +60,8 @@ ROOT = Path(__file__).resolve().parent.parent
 LEDGER_PATH = home.DATA / "comment_posts.jsonl"
 RULES_PATH = home.DATA / "comment_rules.json"
 
-# THE STANDING RULE: answer no one automatically and send no hand to research
-# a comment -- only report that a comment appeared, until the owner and the
+# THE STANDING RULE: answer no one automatically -- only report that a
+# comment appeared, until the owner and the
 # assistant have learned, one comment at a time, which comments deserve which
 # action.
 #
@@ -72,9 +72,8 @@ RULES_PATH = home.DATA / "comment_rules.json"
 # the thing being prevented is public and under the owner's name.
 #
 # It is deliberately not the assistant's to lift. `data/comment_rules.json` is
-# written by the owner or by an angel session at the owner's word; the
-# assistant's hands are refused `data/` outright and there is no op in its
-# schema that touches this. That asymmetry IS the rule: a hold the assistant
+# written by the owner or by an angel session at the owner's word; there is
+# no op in the assistant's schema that touches this. That asymmetry IS the rule: a hold the assistant
 # could lift itself is a hold that lasts until it has a good reason, and "I had
 # a good reason" is exactly what the owner wants to see first, one comment at
 # a time, until both know which comment deserves which action.
@@ -87,10 +86,10 @@ def rules() -> dict:
     Off disk and never cached: the hold is lifted by editing a file, and a
     lift that needed a restart to take effect would be a lift nobody could
     use in the middle of the conversation where it was decided."""
-    out = {"may_post": not HOLD_DEFAULT, "may_send_hands": not HOLD_DEFAULT,
+    out = {"may_post": not HOLD_DEFAULT,
            "why": (home.OWNER_NAME + "'s standing rule: tell "
-                   + home.OWNER_NAME + " a comment arrived, do not answer it"
-                   " automatically, and send no hand to research one -- until "
+                   + home.OWNER_NAME + " a comment arrived, and do not answer it"
+                   " automatically -- until "
                    + home.OWNER_NAME + " and " + home.NAME + " have learned,"
                    " one comment at a time, which comment deserves which"
                    " action.")}
@@ -99,9 +98,8 @@ def rules() -> dict:
     except (OSError, ValueError):
         return out
     if isinstance(got, dict):
-        for key in ("may_post", "may_send_hands"):
-            if isinstance(got.get(key), bool):
-                out[key] = got[key]
+        if isinstance(got.get("may_post"), bool):
+            out["may_post"] = got["may_post"]
         if isinstance(got.get("why"), str) and got["why"].strip():
             out["why"] = got["why"].strip()
     return out
@@ -560,7 +558,6 @@ def summary(mod_name=None) -> dict:
            "posts_left_today": POSTS_PER_DAY - len(posted_today()),
            "rule": standing["why"],
            "may_post": bool(standing.get("may_post")),
-           "may_send_hands": bool(standing.get("may_send_hands")),
            "can_post": {"steam": bool(standing.get("may_post")),
                         "nexus": False}}
     for m in mods():

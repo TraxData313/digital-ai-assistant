@@ -2,8 +2,8 @@
 
 A personal assistant that does not start over. It keeps one long working set,
 folds what it lets go of into essences it can search and reach back through,
-keeps its own Spark (the text it reads as itself), sends hands to do work,
-watches for things worth waking for, and folds its day at night. It runs as a
+keeps its own Spark (the text it reads as itself), starts and follows Codex
+and Claude Code sessions to do work, watches for things worth waking for, and folds its day at night. It runs as a
 small local web room on Windows, thinking through Claude Code on your plan,
 OpenAI, or OpenRouter.
 
@@ -124,6 +124,26 @@ the icons a phone keeps, and the browser tab's icon. The
 face the home had before is kept file for file in
 `artwork/portraits/original/`, and choosing it gives exactly that back.
 
+## Its sessions
+
+The Sessions tab shows every Codex task and Claude Code session on the
+machine: which ones the assistant follows, what each last said, what waits
+for you, and what the assistant did with them lately. Two switches at the top
+give it Codex tasks and Claude Code sessions; switched off, that kind is gone
+from its turns entirely -- no operation, no instructions, no wakings.
+
+- **Codex tasks** are ordinary tasks in the Codex desktop app, worked through
+  one existing task of yours as the controller (paste its id in the tab).
+- **Claude Code sessions** are ordinary Claude Code background sessions
+  (`claude --bg`), started with the model, effort and permission mode it
+  picks, and with Remote Control on so they appear in your Claude apps and on
+  claude.ai/code. `claude attach <id>` opens one in a terminal. They need the
+  standalone Claude Code signed in once: `claude auth login`.
+
+The assistant follows what it starts and is woken when a followed session
+finishes a turn, waits for you, or ends. A message sent to a session mid-turn
+is delivered when the turn ends.
+
 ## Its notebook
 
 The assistant keeps a few short notes of its own in front of it every turn,
@@ -150,9 +170,8 @@ assistant has no way to read them back.
 
 ## What a home can change
 
-Everything in `server/*.md`, `server/recall_config.py` and
-`server/digest_config.py` can be overridden by a file of the same name in the
-home's `prompts/`. The code's copies name nobody; `{{name}}`, `{{owner}}` and
+Everything in `server/*.md` and `server/recall_config.py` can be overridden
+by a file of the same name in the home's `prompts/`. The code's copies name nobody; `{{name}}`, `{{owner}}` and
 friends are filled from `identity.json`. Pictures work the same way from the
 home's `artwork/` (`icon.ico`, `icon-down.ico`, `portrait.png`,
 `wallpaper.png`, `wallpapers/`, `icon-192.png`, ...). Comment senses for Steam

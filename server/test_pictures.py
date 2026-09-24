@@ -27,7 +27,7 @@ import urllib.request
 import zlib
 from pathlib import Path
 
-from . import app, brain, db, pictures, worker
+from . import app, brain, db, pictures
 
 PORT = 8791
 BASE = "http://127.0.0.1:" + str(PORT)
@@ -223,7 +223,6 @@ def main():
     # never do -- and it is exactly the mistake that would look like it worked.
     pictures.STORE = scratch / "pictures"
     pictures.STORE.mkdir(parents=True, exist_ok=True)
-    worker.READY.update(checked=True, state={"ready": False, "why": "a bench"})
 
     conn = db.connect()
     print("its eyes, leant on over " + str(db.DB_PATH))

@@ -1015,7 +1015,7 @@ def _still_for(conn):
     """Seconds since the last thing that happened in this room, or None if
     nothing ever has. Any row at all counts: every way the assistant can be
     woken leaves one behind -- a person's line is a `user` row, an angel's an
-    `angel`, a hand coming home a `worker`, a waking of the watcher's own a
+    `angel`, a waking of the watcher's own a
     `world`, a night a `dream`, and every turn it takes a row of its own kind
     (`home.SELF`). So "no row since" is the whole of "nothing happened",
     without having to enumerate it."""

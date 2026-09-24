@@ -42,8 +42,15 @@ on the next start; nothing here backfills or drops anything.
 import json
 from datetime import datetime, timezone
 
+from pathlib import Path
+
 from . import clock, db, jobs
 from . import home
+
+# Where the assistant may make a folder: the owner's Documents, and its own
+# shelf of projects inside it.
+DOCUMENTS = Path.home() / "Documents"
+ASSISTANT_PROJECTS = DOCUMENTS / home.NAME
 
 # Who may own a project, and who may sign a line. The household is people.py's
 # to name; these two lists are what an owner and an author are allowed to be,
@@ -314,16 +321,14 @@ def _no_such(conn, title) -> str:
 
 def make_folder(name) -> dict:
     """A folder for a project the assistant is starting, under its own
-    projects shelf and nowhere else. The rule and the path are the hand's, not
-    a second set: `worker.ASSISTANT_PROJECTS`, and only the last part of
-    whatever name it gave, so nothing it writes can walk out of that folder."""
-    from . import worker      # late, so nothing here depends on the dispatcher
-    from pathlib import Path
+    projects shelf and nowhere else: `ASSISTANT_PROJECTS`, and only the last
+    part of whatever name it gave, so nothing it writes can walk out of that
+    folder."""
     leaf = Path(_tidy(name, 200).replace("\\", "/")).name
     if not leaf or leaf in (".", ".."):
         return {"ok": False, "why": "'" + str(name) + "' is not a folder name "
                 "I can make. Nothing was made."}
-    made = worker.ASSISTANT_PROJECTS / leaf
+    made = ASSISTANT_PROJECTS / leaf
     there = made.is_dir()
     try:
         made.mkdir(parents=True, exist_ok=True)
@@ -353,9 +358,8 @@ def set_folder(conn, title, folder) -> dict:
     stated bound:
 
     - It may **create** a directory only inside the owner's Documents folder
-      (`worker.DOCUMENTS`). A bare name with no separator in it lands under
-      the projects shelf, `worker.ASSISTANT_PROJECTS`, the same shelf a
-      hand's `create` uses.
+      (`DOCUMENTS`). A bare name with no separator in it lands under the
+      projects shelf, `ASSISTANT_PROJECTS`.
     - It may **point** a project at a path outside Documents -- it already
       exists and it is only naming it -- but it may never bring one into
       being out there. The acceptance case is exactly this: an existing
@@ -366,9 +370,6 @@ def set_folder(conn, title, folder) -> dict:
       assistant's to overturn.
 
     Every refusal says the path in words. Nothing here fails quietly."""
-    from pathlib import Path
-    from . import worker
-
     p = by_title(conn, title)
     if not p:
         return {"ok": False, "why": _no_such(conn, title)}
@@ -384,13 +385,13 @@ def set_folder(conn, title, folder) -> dict:
     store = Path(db.DB_PATH).resolve().parent
     bare = ("/" not in raw and "\\" not in raw and ":" not in raw)
     if bare:
-        target = worker.ASSISTANT_PROJECTS / raw
+        target = ASSISTANT_PROJECTS / raw
     else:
         target = Path(raw)
         if not target.is_absolute():
             return {"ok": False, "why": "'" + raw + "' is neither a plain name "
                     "nor a whole path, so I cannot tell where it is meant to "
-                    "be. A bare name goes under " + str(worker.ASSISTANT_PROJECTS)
+                    "be. A bare name goes under " + str(ASSISTANT_PROJECTS)
                     + "; anything else I write out in full. Nothing was set."}
 
     if _under(target, store):
@@ -402,9 +403,9 @@ def set_folder(conn, title, folder) -> dict:
     here = target.is_dir()
     made = False
     if not here:
-        if not _under(target, worker.DOCUMENTS):
+        if not _under(target, DOCUMENTS):
             return {"ok": False, "why": "there is no folder at '" + str(target)
-                    + "', and it is outside " + str(worker.DOCUMENTS)
+                    + "', and it is outside " + str(DOCUMENTS)
                     + " -- I may point at a path out there that already "
                     "exists, but I may not bring one into being. That is my "
                     "own bound, said to " + home.OWNER_NAME + ". Nothing was "

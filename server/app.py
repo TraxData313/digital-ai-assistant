@@ -27,9 +27,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs, unquote
 
-from . import (angel, backup, brain, clock, db, digest, dream, jobs, limits,
-               models_dir, notebook, notes, providers,
-               people, pictures, projects, recall, wallpapers, watch, worker, native_proof, native_tools, overmind, live_voice)
+from . import (angel, backup, brain, claude_sessions, clock, db, dream, jobs,
+               limits, models_dir, notebook, notes, providers, people, pictures,
+               projects, recall, wallpapers, watch, native_proof, native_tools,
+               overmind, live_voice)
 from . import home, homes, portraits
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -40,8 +41,8 @@ LAST_TURN = {"sent": None, "answer": None, "applied": None, "error": None}
 
 # One turn at a time -- there is one assistant and one conversation -- but more
 # than one thing may want a turn. A person can say a second thing while the
-# assistant is still thinking about the first, and a worker it sent can come
-# home while it is mid-sentence. So nothing runs a turn directly any more: it
+# assistant is still thinking about the first, and a session it follows can
+# finish while it is mid-sentence. So nothing runs a turn directly any more: it
 # writes down what happened, at the moment it happened, and nudges. The runner
 # below takes them in order and never overlaps two.
 NUDGE = threading.Event()
@@ -154,132 +155,36 @@ FAILED = {"row": None}
 
 def take_woken(free=None):
     """The waking slot, emptied. `free` is the assistant's free interval when
-    one is running, and it changes what may be taken out -- this is the only
-    place that rule can be kept.
-
-    A hand coming home is **left where it is**. The slot is the queue: it
-    already folds several homecomings into one waking, so an evening's worth
-    of them is taken whole the moment the free time is over. Nothing is
-    dropped, because nothing is taken.
-
-    A hand's *permission ask* is the one thing that cannot wait. It is
-    holding still for four minutes, not two hours, so it fails closed and is
-    written down rather than pulling the assistant out of its own free
-    time."""
+    one is running: anything in the slot is held, and taken when the free time
+    is over. Nothing is dropped, because nothing is taken."""
     with WOKEN_LOCK:
         why = WOKEN["why"]
         if why is None or free is None:
             WOKEN["why"] = None
             return why
-        if why.get("by") == "ask":
-            WOKEN["why"] = None
-            clock.stood_down(
-                "a hand's permission ask",
-                "failed closed: its free time was running until "
-                + str(free.get("until")) + ", and an ask cannot wait for it",
-                {"name": why.get("name"), "tool": why.get("tool"),
-                 "what": why.get("what")})
-            return None
-        # Held. It stays in the slot and is taken when the free time is over.
         return None
 
 
-def worker_came_home(out, chain=1):
-    """A page the assistant sent has come back. It was the one waiting for it,
-    so it comes back to the assistant rather than sitting until the owner
-    next says something. This is the only thing that wakes it; everything
-    else can wait for a person.
-
-    Several can come home while it is busy with the first. They are gathered
-    into one waking rather than buying a turn each, and it is told all of
-    them -- the account of each is in `report.worker` as well.
-
-    `chain` is how many wakings deep this is without a person speaking -- the
-    assistant is told, so it knows whether it still has a link left to
-    correct its aim with."""
-    came = {
-        "name": out.get("name"), "page": out.get("page"),
-        "title": out.get("title"), "run": out.get("run"),
-        "ended": out.get("ended"), "row": out.get("row"),
-        "narrate": bool(out.get("narrate")),
-    }
-    with WOKEN_LOCK:
-        why = WOKEN["why"]
-        if why and why.get("by") == "worker" and not why.get("late"):
-            why["home"].append(came)
-            why["chain"] = max(why["chain"], chain)
-            why["narrate"] = why["narrate"] or came["narrate"]
-        else:
-            why = {
-                "by": "worker",
-                "home": [came],
-                "chain": chain,
-                # Only if it asked for it when it sent them out.
-                "narrate": came["narrate"],
-            }
-        why["chain_max"] = worker.MAX_CHAIN
-        why["links_left"] = max(0, worker.MAX_CHAIN - why["chain"])
-        names = [(h["name"] + " (page " + str(h["page"]) + ")") if h["name"]
-                 else (h["title"] or "an errand") for h in why["home"]]
-        why["why"] = ((names[0] + " has come home") if len(names) == 1
-                      else ", ".join(names) + " have come home")
-        # Kept for anything still reading the old single shape.
-        why.update({"title": came["title"], "run": came["run"],
-                    "ended": came["ended"], "row": came["row"]})
-        WOKEN["why"] = why
-    NUDGE.set()
-
-
-def hand_asked(ask: dict):
-    """A hand has hit a refusal that is its own to overturn and stopped where it
-    stands. It is holding still for four minutes, so this is the most
-    time-critical waking there is: it goes to the front, and it does not fold
-    into a homecoming the way several homecomings fold into each other.
-
-    It never chains past its ceiling either. A hand cannot ask a question
-    nobody is allowed to answer -- that would be a hand standing still for
-    four minutes for nothing."""
-    with WOKEN_LOCK:
-        WOKEN["why"] = {
-            "by": "ask",
-            "chain": 1, "chain_max": worker.MAX_CHAIN,
-            "links_left": worker.MAX_CHAIN - 1,
-            "ask": ask.get("ask"),
-            "name": ask.get("name"),
-            "what": ask.get("what"),
-            "tool": ask.get("tool_name"),
-            "refused_because": ask.get("why"),
-            "gives_up_in_s": worker.ASK_WAIT_S,
-            "narrate": False,
-            "why": (str(ask.get("name") or "a hand") + " has stopped and is "
-                    "asking me whether it may " + str(ask.get("tool_name"))
-                    + ": " + str(ask.get("what"))[:120]),
-        }
-    NUDGE.set()
-
-
-def hand_over_the_late(conn) -> int:
-    """Errands that came back to nobody, given to the assistant at last.
-
-    An errand that went out and never came home has to be *said*. From where
-    the assistant sits, silence and "it found nothing" read the same, so it
-    is told which it was."""
-    late = worker.homecoming()
-    for out in late:
-        brain.keep_worker_report(conn, out, db.last_reply_row(conn))
-    if late:
-        vanished = sum(1 for o in late if o["ended"] == "vanished")
-        with WOKEN_LOCK:
-            WOKEN["why"] = {
-                "by": "worker",
-                "chain": worker.MAX_CHAIN,      # no chaining off old news
-                "chain_max": worker.MAX_CHAIN, "links_left": 0,
-                "late": len(late), "vanished": vanished,
-                "why": ("errands of mine came back while the room was shut — "
-                        + str(vanished) + " of them never came home at all"),
-            }
-        NUDGE.set()
-    return len(late)
+def sessions_view() -> dict:
+    """Everything the Sessions tab draws, in one answer: the Codex tasks and
+    the Claude sessions the assistant can see, which of them it follows, and
+    what it has done with them lately. Each side says its own error rather
+    than failing the other."""
+    codex = {}
+    try:
+        codex = overmind.snapshot()
+        if codex.get('controller'):
+            try:
+                codex['desktop'] = overmind.desktop('list_threads', {'limit': 50})
+            except Exception as exc:
+                codex['desktop_error'] = str(exc)
+    except Exception as exc:
+        codex = {'error': str(exc)}
+    try:
+        claude = claude_sessions.view()
+    except Exception as exc:
+        claude = {'error': str(exc)}
+    return {'name': home.NAME, 'codex': codex, 'claude': claude}
 
 
 # Its restart, once called. The runner takes no new turn after it, and the
@@ -482,7 +387,7 @@ def turn_loop():
             TURN_GATE.acquire()
             try:
                 if providers.paused_reason(MODEL["name"]):
-                    # Leave messages, clock firings, senses and worker wakeups pending.
+                    # Leave messages, clock firings, senses and session wakeups pending.
                     break
                 said = unanswered(conn)
                 # Its own time, if a stretch of it is running. It changes what
@@ -496,7 +401,7 @@ def turn_loop():
                     # woken for is folded into this turn instead of buying a
                     # second one -- it is in its working set either way. Not
                     # during its free time: the line reaches it, and it does
-                    # not turn free time into work by carrying an errand in
+                    # not turn free time into work by carrying a waking in
                     # on its back.
                     said_row = db.get_row(conn, said)
                     is_proof = bool(said_row and (said_row.get("meta") or {}).get("native_proof"))
@@ -529,6 +434,8 @@ def turn_loop():
                     if why is None and not free:
                         why = overmind.due()
                     if why is None and not free:
+                        why = claude_sessions.due()
+                    if why is None and not free:
                         # The watcher: the world's turn to speak, when nobody
                         # else has. It looks at most every half minute, keeps
                         # its own ceiling, and its no costs nothing.
@@ -558,6 +465,7 @@ def turn_loop():
                         continue
                     ok = one_turn(conn, why)
                     overmind.acknowledge(why, ok)
+                    claude_sessions.acknowledge(why, ok)
                 if not ok:
                     # A turn that broke leaves the line still unanswered, and
                     # going straight round again asks the same thing of the
@@ -714,14 +622,14 @@ def _project_op(conn, body, who) -> dict:
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
-    # The page asks how the turn is going every two seconds, and the workers
-    # panel every five. In a console those lines scrolled past and cost
+    # The page asks how the turn is going every two seconds, and the
+    # sessions tab every few. In a console those lines scrolled past and cost
     # nothing. Logged to a file instead, they are forty thousand lines a day
     # of "200 -" with the boot, the snags and the tracebacks somewhere
     # underneath. So the heartbeat is silent while
     # it is going well, and says something the moment it stops going well --
     # a 500 on a poll is exactly the line worth keeping.
-    HEARTBEAT = ("/api/progress", "/api/workers")
+    HEARTBEAT = ("/api/progress", "/api/sessions")
 
     def log_message(self, fmt, *args):
         line = native_tools.redact(fmt % args)
@@ -936,9 +844,6 @@ class Handler(BaseHTTPRequestHandler):
                 **self._paged(conn, rows, floor),
                 "counts": db.row_counts(conn),
                 "last_turn": LAST_TURN,
-                # Whether it can send anyone at all, and what was proved.
-                "worker": {**worker.ready(),
-                           "window": worker.spend_in_window(conn)},
                 # So the button can say when the last copy was taken rather
                 # than only offering to take another.
                 "backup": backup.shelf(),
@@ -987,6 +892,11 @@ class Handler(BaseHTTPRequestHandler):
                                'backend': brain.voice_backend(),
                                'switch': bool(brain.read_voice().get('enabled', True)),
                                'local': brain.voice_status()})
+
+        if path == '/api/sessions':
+            if self._who != home.OWNER:
+                return self._shut()
+            return self._json(sessions_view())
 
         if path == '/api/codex':
             if self._who != home.OWNER:
@@ -1067,13 +977,9 @@ class Handler(BaseHTTPRequestHandler):
             # room keeps asking about while nobody is typing.
             now = progress_now()
             now["native_active"] = native_tools.RUNNING.is_set()
-            now["out"] = worker.out_now()
             # The automatic memory's state rides along: which model, whether it
             # is loaded, loading, working, or not here -- the header shows it.
             now["recall"] = recall.status()
-            # The digest organ rides beside it: whether it is on, its knobs,
-            # and the last run -- the Developer section reads this.
-            now["digest"] = digest.status()
             # What is left on the owner's plan. It rides the poll rather than
             # the turn because it moves while nobody is typing -- anything else
             # on the same plan spends against the same windows the assistant
@@ -1090,16 +996,6 @@ class Handler(BaseHTTPRequestHandler):
             # must never do.
             now["provider"] = providers.now()
             return self._json(now)
-
-        if path == "/api/workers":
-            conn = db.connect()
-            try:
-                return self._json({"roster": worker.roster(60),
-                                   "hands": worker.hands_all(),
-                                   "ready": worker.ready(),
-                                   "window": worker.spend_in_window(conn)})
-            finally:
-                conn.close()
 
         # Angel me, listening. Lines of its own addressed to `angel` that nobody
         # has collected yet, handed over once. The key is the same one the
@@ -1137,9 +1033,6 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(notebook.status(conn))
             finally:
                 conn.close()
-
-        if path == "/api/digest":
-            return self._json(digest.status())
 
         # Where the models we fetch ourselves are kept: the folder, what is
         # in it, what is left in the old place, and LM Studio's own beside it.
@@ -1355,6 +1248,16 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:
                 return self._json({'error': 'Voice could not complete this action: ' + type(exc).__name__}, 500)
 
+        if self.path == '/api/claude':
+            if self._who != home.OWNER:
+                return self._shut()
+            try:
+                result = claude_sessions.configure(body)
+                NUDGE.set()
+                return self._json(result)
+            except Exception as exc:
+                return self._json({'error': str(exc)}, 400)
+
         if self.path == '/api/codex':
             if self._who != home.OWNER:
                 return self._shut()
@@ -1506,22 +1409,6 @@ class Handler(BaseHTTPRequestHandler):
             finally:
                 conn.close()
 
-        # A worker finishing, knocking. This is the whole point of the hook:
-        # the finish pokes the server itself rather than leaving something on
-        # disk for the owner to notice. It answers fast and does no work here --
-        # the dispatcher is already waiting on it.
-        if self.path == "/api/worker/knock":
-            heard = worker.knock(body)
-            # Only a knock with a name on it is news. The permission
-            # channel answers through this door too -- a stopped hand
-            # polling for an answer every two seconds -- and painting every
-            # poll flooded the chat with "a worker knocked: None" for as
-            # long as a hand stood waiting.
-            if heard.get("heard") and heard.get("event"):
-                progress_step("a worker knocked: " + str(heard["event"]),
-                              "worker")
-            return self._json(heard)
-
         # One consistent copy of the store, taken while the room is running,
         # checked before it is called a backup. The whole of it is in `backup.take` -- this is
         # only the door, and the lock that stops two of them at once.
@@ -1564,7 +1451,7 @@ class Handler(BaseHTTPRequestHandler):
 
         # Angel me, speaking under its own name. The key is made fresh when the
         # room opens and lives where the assistant cannot read it, so nothing it
-        # reads -- a page, a file, an errand's report -- can be turned into a
+        # reads -- a page, a file, a session's reply -- can be turned into a
         # line that looks like it came from angel me.
         if self.path == "/api/angel":
             want = angel.read_token()
@@ -1729,8 +1616,8 @@ class Handler(BaseHTTPRequestHandler):
             if not TURN_GATE.acquire(blocking=False):
                 return self._json({"error": "Wait for the active turn or background check to finish before changing Codex-only mode."}, 400)
             try:
-                if body.get("enabled") is True and (progress_now()["busy"] or worker.out_now()):
-                    raise providers.Refused("Wait for the active turn and workers to finish before enabling Codex-only mode.")
+                if body.get("enabled") is True and progress_now()["busy"]:
+                    raise providers.Refused("Wait for the active turn to finish before enabling Codex-only mode.")
                 providers.set_codex_only(body.get("enabled"))
             except providers.Refused as exc:
                 return self._json({"error": str(exc)}, 400)
@@ -1762,12 +1649,6 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/recall/settings":
             recall.set_knobs(body)
             return self._json(recall.status())
-
-        # The digest organ's knobs. It borrows the automatic memory's model,
-        # so there is no choose, download or load here -- only the dials.
-        if self.path == "/api/digest/settings":
-            digest.set_knobs(body)
-            return self._json(digest.status())
 
         if self.path == "/api/recall/download":
             out = recall.download()
@@ -1906,21 +1787,11 @@ def main():
     print(f"\n  {home.NAME} is awake at  http://localhost:{PORT}")
     print(f"  home: {home.HOME}")
     if providers.codex_only():
-        print("  Codex-only mode: Claude calls and workers paused")
+        print("  Codex-only mode: the room's own Claude calls are paused")
     else:
         print(f"  claude binary: {brain.find_claude()}")
     print(f"  store: {db.DB_PATH}")
 
-    # Before it can send anyone: prove every limiting flag is real, and prove
-    # the caps bite rather than merely parse. A mistyped flag is ignored with
-    # exit code 0 and looks exactly like a leash that never tripped, so this
-    # runs first and refuses everything if it does not pass.
-    worker.KNOCK_PORT = PORT
-    # An errand of the assistant's coming home is the one thing that starts a
-    # turn without a person speaking. It was the one waiting for it -- and so
-    # is a hand that has stopped mid-page to ask it something.
-    brain.WORKER_CAME_HOME = worker_came_home
-    worker.ON_ASK = hand_asked
     threading.Thread(target=turn_loop, daemon=True).start()
     # If a small model is chosen for the automatic memory, bring it up now,
     # so it first turn does not find it cold.
@@ -1932,12 +1803,6 @@ def main():
         n for n, s in view["senses"].items() if s == "on")
         + " · ceiling " + str(view["today"]["ceiling"]) + " a day"
         + " · push " + view["push"])
-    # Anything still marked as out was being waited for by a process that is
-    # gone. It is nobody's now, and saying so beats leaving it looking live.
-    orphans = worker.adopt_orphans()
-    if orphans:
-        print(f"  {len(orphans)} worker(s) were still out when the room "
-              f"last closed; marked orphaned")
     conn = db.connect()
     try:
         lost_dreams = dream.adopt_orphans(conn)
@@ -1951,34 +1816,7 @@ def main():
                   f"last closed; marked broken")
     finally:
         conn.close()
-    lost_hands = worker.adopt_orphaned_hands()
-    if lost_hands:
-        print(f"  {len(lost_hands)} hand(s) were mid-page when the room last "
-              f"closed: {', '.join(lost_hands)} -- their threads are intact")
-    # What came back to nobody goes to it, once, and it is woken to say so.
-    conn = db.connect()
-    try:
-        late = hand_over_the_late(conn)
-    finally:
-        conn.close()
-    if late:
-        print(f"  {late} errand(s) came back to nobody; handed to {home.NAME}")
-    state = worker.ready()
-    for probe in state.get("probes") or []:
-        print(f"  leash {probe['flag']:20} {probe['verdict']} "
-              f"-- {probe['detail']}")
-    for canary in state.get("canaries") or []:
-        bit = "bites" if canary["bites"] else "DID NOT BITE"
-        print(f"  cap   {canary['flag']:20} {bit} "
-              f"({canary.get('terminal_reason')})")
-    if state.get("proof_reused"):
-        print(f"  cap proof reused from {state.get('taken')}")
-    if state.get("ready"):
-        print(f"  workers: ready, ${worker.CEILING_SPEND_USD:.2f} of errands "
-              f"per {worker.CEILING_WINDOW_HOURS}h "
-              f"(and never more than {worker.CEILING_RUNS})\n")
-    else:
-        print(f"  workers: REFUSED -- {state.get('why')}\n")
+    print()
     try:
         room.serve_forever()
     finally:

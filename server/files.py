@@ -16,9 +16,9 @@ Three operations:
     read  -- a file, or a stretch of one
     find  -- a pattern, over a file or a tree
 
-What the assistant gains is doing it itself, mid-turn, for pennies. It could already
-send a worker who reads files, and that stays the right move for anything taking many
-steps or needing the web. This is for the file it can name.
+What the assistant gains is doing it itself, mid-turn, for pennies. A Claude or Codex
+session stays the right move for anything taking many steps. This is for the file it
+can name.
 
     python -m server.files list .
     python -m server.files read README.md 1 40
@@ -56,8 +56,6 @@ DEFAULT_ROOTS = [str(Path.home() / "Documents")]
 ALWAYS_REFUSED = {
     ".env": "it holds keys",
     ".env.local": "it holds keys",
-    "worker.proof.json": ("it is the proof the leash on my errands actually bites, "
-                          "and it is checked rather than read"),
     "angel.token": ("it is the key to the angel session's own door, and the whole point of "
                     "that door is that nothing I read can post through it -- a key "
                     "I could read is a key a page could talk me into reading out"),

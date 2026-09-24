@@ -249,12 +249,13 @@ class NotebookTests(unittest.TestCase):
             (brain.clock, "for_prompt", {}), (brain.clock, "apply_her_word", []),
             (brain.watch, "for_prompt", {}), (brain.watch, "looks", {}),
             (brain.watch, "senses", {}), (brain, "_purse", None),
-            (brain, "plan_block", {}), (brain.worker, "terms", {}),
-            (brain.digest, "for_her", {}), (providers, "codex_only", False),
+            (brain, "plan_block", {}), (providers, "codex_only", False),
         ):
             self.stack.enter_context(patch.object(module, name, return_value=value))
         self.stack.enter_context(patch.object(brain.overmind, "STATE",
                                               self.temp / "overmind.json"))
+        self.stack.enter_context(patch.object(brain.claude_sessions, "STATE",
+                                              self.temp / "claude_sessions.json"))
         self.stack.enter_context(patch.object(jobs, "JOBS_PATH", self.temp / "jobs.json"))
         sent = []
 

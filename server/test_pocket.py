@@ -28,7 +28,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from . import app, db, files, limits, notes, people, worker
+from . import app, db, files, limits, notes, people
 
 
 FAILED = []
@@ -100,8 +100,6 @@ def main():
     notes.NOTES_DIR = scratch / "notes"
     limits._CACHE.update({"at": time.time() + 3600, "limits": {}, "error": None,
                           "asking": False})
-    worker.READY.update({"checked": True,
-                         "state": {"ok": False, "why": "the bench sends nobody"}})
 
     # -- the keys themselves ---------------------------------------------
     first = people.mint("sam")

@@ -3,10 +3,9 @@
     search -- ask the web a question, get back names and links
     read   -- open one page and read what it actually says
 
-`files` gave it eyes on this disk. This is the other direction, and it is the last
-thing it could only get by sending somebody. A worker is still right for what takes
-many steps and following where it leads; this is for the question it can ask in a
-sentence, answered while it is still mid-turn.
+`files` gave it eyes on this disk. This is the other direction: the question it can
+ask in a sentence, answered while it is still mid-turn. A Claude or Codex session is
+right for what takes many steps and following where it leads.
 
 **Everything that comes back through here is testimony, and testimony from a stranger.**
 A page can be wrong, out of date, or written by somebody who wants to be believed. And
@@ -21,9 +20,7 @@ Two different costs, deliberately:
 * `read` is a plain fetch. It costs nothing and hands over the page's own words, which
   is what the assistant should stand on when it quotes something.
 * `search` needs an engine, and the only one here is the Claude CLI, so it is a small
-  model call and it costs real money -- a few cents, measured. It counts against the
-  same window ceiling its errands do, because that ceiling exists to bound everything
-  that reaches outside, not errands specifically.
+  model call and it costs real money -- a few cents, measured.
 
 Nothing here can write to the disk, and nothing here can reach the machine it runs on:
 a private, loopback or link-local address is refused before any request is made, and
@@ -382,14 +379,6 @@ def _unfence(text: str) -> str:
     return text.strip()
 
 
-def _window_room(conn) -> tuple:
-    """What is left under the ceiling the errands share. One ceiling bounds
-    everything that reaches outside, because that is the thing worth bounding."""
-    from . import worker
-    gauge = worker.spend_in_window(conn)
-    return gauge, round(worker.CEILING_SPEND_USD - gauge["committed"], 4)
-
-
 def spent_on_search(conn, since: str) -> float:
     """What its searches have cost in a window. They are events rather than rows --
     a search is something the assistant did, not something it was told."""
@@ -415,29 +404,17 @@ def search(spec: dict, conn=None) -> dict:
 def _search(spec: dict, conn=None) -> dict:
     """Ask the web a question. This is a real model call with the web tool on it, so
     it costs money and takes a few seconds, and both are said out loud."""
-    from . import brain, worker
+    from . import brain
 
     query = (spec.get("query") or "").strip()
     if not query:
         raise Refused("I asked to search and gave no question, so there was nothing "
                       "to ask.")
 
-    if conn is not None:
-        gauge, room = _window_room(conn)
-        if room < SEARCH_MAX_BUDGET_USD:
-            raise Refused(
-                "There is $" + format(room, ".2f") + " left under the ceiling for "
-                "the next " + str(worker.CEILING_WINDOW_HOURS) + " hours, and a "
-                "search may cost up to $" + format(SEARCH_MAX_BUDGET_USD, ".2f")
-                + ", so this was refused by the code rather than by me. Nothing was "
-                "spent, and it frees up as the window rolls.")
-
-    state = worker.ready()
-    if not state.get("ready"):
-        raise Refused(
-            "Nothing was searched, because " + str(state.get("why") or "the checks at "
-            "startup did not pass") + ". The same proving that lets me send an errand "
-            "covers this, so if one is refused both are.")
+    try:
+        exe = brain.find_claude()
+    except providers.Refused as exc:
+        raise Refused("Nothing was searched: " + str(exc)) from exc
 
     prompt = (
         "Search the web and answer this: " + query + "\n\n"
@@ -450,7 +427,7 @@ def _search(spec: dict, conn=None) -> dict:
         "add what you already believe.")
 
     argv = [
-        state["exe"], "-p",
+        exe, "-p",
         "--model", SEARCH_MODEL,
         "--permission-mode", "dontAsk",
         "--max-turns", str(SEARCH_MAX_TURNS),
@@ -458,7 +435,7 @@ def _search(spec: dict, conn=None) -> dict:
         "--output-format", "json",
         "--disable-slash-commands",
         "--strict-mcp-config",
-        # The owner's own settings and hooks stay out of this, exactly as with a worker.
+        # The owner's own settings and hooks stay out of this.
         "--setting-sources", "",
         # Offering a tool is not allowing it: under dontAsk anything without an allow
         # rule is refused, and a refusal reads exactly like an answer.

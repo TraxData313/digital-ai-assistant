@@ -1255,15 +1255,64 @@ a.res-val:hover { color: var(--ink); }
 }
 .prov-credit-save:hover { border-color: var(--person); }
 .prov-credit-clear:hover { border-color: var(--bad); color: var(--bad); }
-/* Session oversight uses the room's ordinary controls and typography. */
-#view-codex { padding: 1.2rem; }
-#view-codex button { margin: .35rem .6rem .35rem 0; }
-#view-codex input, #view-codex select { font: inherit; max-width: 100%; padding: .3rem .5rem; color: var(--ink); background: var(--well); border: 1px solid var(--line); border-radius: 5px; }
-#view-codex .codex-task { padding: 1rem 0; border-bottom: 1px solid var(--line); }
-#view-codex .codex-task p { color: var(--dim); font-size: .9rem; margin: .3rem 0; }
-#view-codex [role="alert"] { color: var(--bad); }
-#view-codex a { color: inherit; overflow-wrap: anywhere; }
-#view-codex pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* --- Sessions --------------------------------------------------------------
+   Every Codex task and Claude Code session, drawn as cards like the projects
+   are. What waits on a person is the one thing that must not be missed. */
+#view-sessions { padding: 1.2rem; overflow-wrap: anywhere; }
+#view-sessions h2 { margin: 0 0 12px; font-size: 20px; font-weight: 600; }
+#view-sessions .quiet { color: var(--faint); font-size: 13.5px; }
+#view-sessions input[type="text"], #view-sessions select {
+  font: inherit; max-width: 100%; padding: .3rem .5rem; color: var(--ink);
+  background: var(--well); border: 1px solid var(--line); border-radius: 5px; }
+#view-sessions .small-btn { padding: 2px 9px; font-size: 13px; text-decoration: none; }
+.sess-switches { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--well); padding: 12px 14px; }
+.sess-switch { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+.sess-switch input { margin-top: 4px; accent-color: var(--ember); }
+.sess-switch b { display: block; color: var(--ink); font-weight: 600; }
+.sess-connect { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-left: 26px; }
+.sess-warn { color: var(--bad); font-size: 13.5px; margin: 4px 0; }
+.sess-summary { color: var(--dim); font-size: 14px; margin: 4px 0 10px; }
+.sess-group { margin: 18px 0 8px; font-size: 12px; font-weight: 600; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--dim); }
+.sess { border: 1px solid var(--line); border-radius: 10px; background: var(--well);
+  padding: 11px 14px; margin-bottom: 10px; }
+.sess.waiting { border-color: var(--ember); }
+.sess.followed { border-left: 3px solid var(--self); }
+.sess.ended, .sess.done { opacity: .7; }
+.sess-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+.sess-title { color: var(--ink); font-size: 15.5px; }
+.sess-kind { font-size: 11.5px; color: var(--dim); border: 1px solid var(--line);
+  border-radius: 999px; padding: 0 8px; white-space: nowrap; }
+.sess.claude .sess-kind { color: var(--ember); }
+.sess.codex .sess-kind { color: var(--user); }
+.sess-status { margin-left: auto; font-size: 12.5px; color: var(--dim); white-space: nowrap; }
+.sess.working .sess-status { color: var(--ember); }
+.sess.working .sess-status::before { content: ""; display: inline-block; width: 7px; height: 7px;
+  border-radius: 50%; background: var(--ember); margin-right: 6px; vertical-align: middle; }
+.sess.waiting .sess-status { color: var(--ember); font-weight: 600; }
+.sess-meta { font-size: 12.5px; color: var(--faint); margin-top: 3px; }
+.sess-detail { font-size: 13.5px; color: var(--ember); margin-top: 6px; }
+.sess-last { font-size: 13.5px; color: var(--dim); margin-top: 7px; white-space: pre-wrap;
+  max-height: 6.2em; overflow: hidden; }
+.sess-last .who, .sess-talk .who { color: var(--faint); }
+.sess-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 9px; }
+.sess-cmd { font-size: 12px; color: var(--faint); user-select: all; }
+.sess-talk { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px;
+  display: flex; flex-direction: column; gap: 8px; max-height: 60vh; overflow-y: auto; }
+.sess-talk .msg .text { white-space: pre-wrap; font-size: 14px; color: var(--ink); }
+.sess-talk .msg.you .text { color: var(--user); }
+.sess-talk .msg .tool { font-size: 12px; color: var(--faint); font-family: var(--mono, monospace); }
+.sess-talk .who { font-size: 12px; }
+.sess-others, .sess-activity, .sess-settings { margin-top: 16px; }
+.sess-others > summary, .sess-activity > summary, .sess-settings > summary {
+  cursor: pointer; color: var(--dim); font-size: 14px; margin-bottom: 8px; }
+.sess-act summary { cursor: pointer; font-size: 13.5px; color: var(--dim); display: flex;
+  gap: 8px; flex-wrap: wrap; padding: 3px 0; }
+.sess-act .when { color: var(--faint); min-width: 70px; }
+.sess-act pre { white-space: pre-wrap; font-size: 13px; color: var(--ink); background: var(--well);
+  border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+.sess-settings label { display: block; margin: 8px 0; color: var(--dim); font-size: 14px; }
 
 /* Compact voice controls; the media stream never presents a recording player. */
 #voice-tools { display:flex; flex:none; align-items:center; gap:3px; height:44px; padding:3px 5px; border:1px solid var(--line); border-radius:24px; background:rgba(18,20,17,.5); }

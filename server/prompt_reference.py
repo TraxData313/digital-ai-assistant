@@ -23,7 +23,7 @@ TOPICS = {
                 "### `essences`", "### `fetch`", "### `search`", "### Looking", "### `shelf`")),
     "projects": ("desk, tasks, notices, resources and attributed notes",
                  ("## `projects`", "### `project`")),
-    "jobs": ("job bookkeeping, decisions and history; worker execution paused",
+    "jobs": ("job bookkeeping, decisions and history",
              ("## `jobs`", "### `job`")),
     "clock": ("free time, invitations, schedules and continuing a stretch",
               ("## `clock`", "### `clock`")),
@@ -74,7 +74,6 @@ def jobs_summary() -> list:
         if job["status"] != "open":
             continue
         item = {"title": job["title"], "state": jobs.state_of(job),
-                "worker_execution": "paused — Codex-only mode",
                 "read": (H + "job/") + str(job["id"])}
         if job.get("decided"):
             item["decided_preview"] = _preview(job["decided"])
@@ -143,7 +142,7 @@ def _record(conn, kind, number):
     if kind == "job":
         job = next((j for j in jobs.status()["jobs"] if j["id"] == number), None)
         if job is not None:
-            return {"job": job, "worker_execution": providers.CLAUDE_PAUSED,
+            return {"job": job,
                     "history": "data/jobs.json and job/decide rows via fetch"}
     else:
         if conn is None:

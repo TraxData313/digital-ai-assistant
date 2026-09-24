@@ -27,7 +27,6 @@ data/tray.json
 data/watch_state.json
 data/wakings.jsonl
 data/comment_posts.jsonl
-data/worker.proof.json
 data/hands.json
 data/overmind.json
 data/overmind.tmp

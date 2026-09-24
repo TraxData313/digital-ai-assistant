@@ -39,7 +39,7 @@ def validate_answer(answer):
         if isinstance(value, dict):
             return any(meaningful(v) for v in value.values())
         return bool(value)
-    for field in ("spark", "budget_target_tokens", "essences", "drop", "worker", "job",
+    for field in ("spark", "budget_target_tokens", "essences", "drop", "claude", "job",
                   "project", "clock", "watch", "restart", "comments", "web"):
         if meaningful(answer.get(field)):
             raise ValueError("Native fixture proof cannot apply room operation: " + field)

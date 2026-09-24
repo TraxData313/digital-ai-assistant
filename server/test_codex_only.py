@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 from contextlib import ExitStack
 
-from . import app, brain, codex_backend, db, dream, jobs, limits, providers, watch, web, worker
+from . import app, brain, codex_backend, db, dream, jobs, limits, providers, watch, web
 from . import test_codex_backend as protocol
 from .test_codex_backend import FakeClient, SCHEMA
 
@@ -73,11 +73,6 @@ class ModeTests(unittest.TestCase):
             self.assertEqual(providers.call(providers.resolve("anthropic/claude-opus-5"),
                                            "s", "{}", SCHEMA)["reply"], "router")
             call.assert_called_once()
-        with patch.object(worker, "_send", return_value={"ended": "done"}) as send:
-            self.assertEqual(worker.send(None, {"brief": "test"})["ended"], "done")
-            send.assert_called_once()
-        with patch.object(worker, "_preflight", return_value={"ready": True}):
-            self.assertTrue(worker.preflight()["ready"])
         with patch.object(web, "_search", return_value={"answer": "test"}):
             self.assertEqual(web.search({"query": "test"})["answer"], "test")
         with patch.object(limits, "_fetch_claude", return_value=([{"window": "old"}], None)):
@@ -94,30 +89,9 @@ class ModeTests(unittest.TestCase):
             with providers.model_activity("opus"):
                 self.fail("Claude entered after activation")
 
-    def test_worker_send_resume_fallback_probes_and_cached_ready_are_blocked(self):
+    def test_the_rooms_own_claude_calls_are_blocked(self):
         with self.assertRaises(providers.Refused):
             brain.find_claude()  # includes standalone paid diagnostic entry points
-        with patch.object(worker, "READY", {"checked": True, "state": {"ready": True}}):
-            self.assertFalse(worker.ready()["ready"])
-        self.assertEqual(worker.preflight(force=True)["status"], "paused")
-        for hand in (None, {"name": "builder", "pages": 3, "session": "keep-session"}):
-            spec = {"role": "unknown-falls-back", "size": "unknown", "brief": "keep this"}
-            original = copy.deepcopy(spec)
-            result = worker.send(None, spec, hand=hand)
-            self.assertEqual(result["ended"], "paused")
-            self.assertFalse(result["spent"])
-            self.assertEqual(spec, original)
-        for fn, args in ((worker._canary, ("claude", "--max-turns", "1", "max_turns")),
-                         (worker.probe_flag, ("claude", "--max-turns")),
-                         (worker._proof_key, ("claude",))):
-            with self.assertRaises(providers.Refused):
-                fn(*args)
-        with patch.object(jobs, "commit", side_effect=AssertionError("job reservation")), \
-             patch.object(worker, "hand_update", side_effect=AssertionError("hand mutation")):
-            specs = [{"op": "tell", "name": "old", "text": "pending"}]
-            result = brain._apply_worker(None, specs, 1)
-            self.assertEqual(result["ended"], "paused")
-            self.assertEqual(result["pending"], specs)
 
     def test_web_search_pauses_but_page_reads_and_memory_search_work(self):
         with self.assertRaisesRegex(web.Refused, "Paused"):
@@ -158,7 +132,6 @@ class ModeTests(unittest.TestCase):
             handler.rfile = io.BytesIO(body)
             return handler.do_POST()
         with patch.object(providers, "catalogue", return_value={"mock": True}), \
-             patch.object(worker, "out_now", return_value=[]), \
              patch.object(app, "NUDGE", Mock()), \
              patch.object(app, "progress_now", return_value={"busy": False}), \
              patch.dict(app.FAILED, {"row": 99}):
@@ -232,8 +205,7 @@ class ModeTests(unittest.TestCase):
     def test_prompt_omits_claude_machinery_and_retains_shared_contract(self):
         spark = "Spark with Claude in its own words — keep exactly"
         with patch.object(brain, "read_spark", return_value=spark), \
-             patch.object(brain.notes, "for_prompt", return_value="Their notes"), \
-             patch.object(worker, "standing_terms", side_effect=AssertionError("price table")):
+             patch.object(brain.notes, "for_prompt", return_value="Their notes"):
             prompt = brain.system_prompt(False)
         self.assertTrue(prompt.startswith(spark + "\n\n---\n\nTheir notes"))
         for absent in ("### `worker`", "## The standing terms", "{{standing_terms}}",
@@ -244,10 +216,9 @@ class ModeTests(unittest.TestCase):
         self.assertEqual(schema["properties"]["web"]["items"]["properties"]["op"]["enum"], ["read"])
         for name in ("fetch", "search", "shelf", "files", "project", "clock", "watch", "to", "essences"):
             self.assertIn(name, schema["properties"])
-        self.assertEqual(worker.terms(None)["status"], "paused")
         providers.set_codex_only(False)
-        self.assertIn("worker", brain.response_schema()["properties"])
-        self.assertIn("## The standing terms", brain.harness_text())
+        self.assertNotIn("worker", brain.response_schema()["properties"])
+        self.assertNotIn("## The standing terms", brain.harness_text())
 
     def test_catalogue_and_codex_gauges(self):
         reading = {
@@ -315,7 +286,7 @@ class CodexChatWithModeTests(protocol.CodexTests):
                 self.assertEqual(reply["by_model"], "codex/gpt-5.6-sol")
                 self.assertEqual(reply["meta"]["room"], "lee")
                 self.assertEqual(db.get_row(conn, user_id)["text"], "Hello Ada")
-                self.assertEqual(result["sent"]["errands"]["status"], "paused")
+                self.assertNotIn("errands", result["sent"])
             finally:
                 conn.close()
 

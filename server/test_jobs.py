@@ -84,16 +84,14 @@ def main():
     check("Sam speaking refills the links",
           jobs.get_open("voice")["links_left"] == 10)
 
-    # 6. State knows a hand that is out.
-    st = dict(jobs.get_open("voice"), hands=["wren"])
-    check("a page out reads as waiting on a hand",
-          jobs.state_of(st, {"wren"}) == "waiting on a hand")
-    check("otherwise it waits on me", jobs.state_of(st) == "waiting on me")
+    # 6. With nothing else on it, a job waits on the assistant.
+    check("otherwise it waits on me",
+          jobs.state_of(jobs.get_open("voice")) == "waiting on me")
 
     # 7. The assistant's decision is the line that survives.
     out = jobs.decide("voice", "sonnet not opus — the boot cost was the problem")
     check("a decision lands", out["ok"] and out["job"]["decided"].startswith("sonnet"))
-    view = jobs.for_prompt({"voice": ["wren"]}, set())
+    view = jobs.for_prompt()
     check("the block carries name, state, cost, links and the decision",
           len(view) == 1 and view[0]["title"] == "voice"
           and view[0]["decided"].startswith("sonnet")

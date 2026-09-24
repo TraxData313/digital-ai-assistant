@@ -3,7 +3,7 @@
 The shape:
 
 - A job is **state, not a row** -- it lives in `data/jobs.json` and the
-  assistant is handed it as a block, `jobs`, beside `errands`. Rows are written
+  assistant is handed it as a block, `jobs`. Rows are written
   only at open and at close (and when it records a decision), in its own
   words, so the store keeps the decision and the outcome where they happened.
 - **Nothing ages silently.** Every job carries `last_moved`, and a stale one
@@ -16,7 +16,7 @@ The shape:
   true would be the same failure as an essence the assistant cannot check.
 - **Links are per job**: how many wakings the job may buy without the owner.
   Default eight -- cut down from twelve, since twelve wakings is several
-  dollars of turns before a hand has cost anything -- refused above thirty,
+  dollars of turns -- refused above thirty,
   refilled when the owner speaks. World wakings never spend them: the watcher
   has its own ceiling, and a job cannot spend the room's noticing.
 - Quiet unless it needs the owner. A finished job is a sentence when the owner
@@ -321,46 +321,38 @@ def refill_links() -> None:
             _save(data)
 
 
-def state_of(job, hands_out=()) -> str:
+def state_of(job) -> str:
     """One word of standing, computed fresh. Parked looks different from
     stuck, and what it wants from the owner comes first."""
     if job["status"] == "closed":
         return "closed"
-    from . import providers
-    if job.get("hands") and providers.codex_only():
-        return providers.CLAUDE_PAUSED
     if job.get("needs"):
         return "over ceiling — mine to widen or close (" + job["needs"] + ")"
-    if any(h in hands_out for h in job.get("hands", ())):
-        return "waiting on a hand"
     if job["links_left"] <= 0:
         return ("parked at zero links — they refill when " + home.OWNER_NAME + " next speaks, "
                 "or I widen them")
     return "waiting on me"
 
 
-def for_prompt(hands_by_job=None, out_names=()) -> list:
+def for_prompt() -> list:
     """The assistant's block: name, state, cost against ceiling, links left,
     and its own last decision -- never the goal read back at it."""
-    hands_by_job = hands_by_job or {}
     out = []
     with _LOCK:
         data = _load()
     for j in data["jobs"]:
         if j["status"] != "open":
             continue
-        j = dict(j, hands=sorted(hands_by_job.get(j["title"].lower(), [])))
         quiet = _quiet_days(j)
         entry = {
             "title": j["title"],
-            "state": state_of(j, out_names),
+            "state": state_of(j),
             "spent_usd": round(j["spent_usd"], 2),
             "out_usd": round(j["out_usd"], 2),
             "ceiling_usd": j["ceiling_usd"],
             "links_left": j["links_left"],
             "links": j["links"],
             "wakings": j["wakings"],
-            "hands": j["hands"],
             "decided": j["decided"],
             "opened": j["opened"],
         }

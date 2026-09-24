@@ -104,7 +104,7 @@ def main():
 
     def hold(on):
         comments.RULES_PATH.write_text(
-            json.dumps({"may_post": not on, "may_send_hands": not on}),
+            json.dumps({"may_post": not on}),
             encoding="utf-8")
 
     # The mods, the account, the owner's own names and the sign-off come from the
@@ -283,8 +283,6 @@ def main():
     check("and it carries the owner's reason in words",
           "not answer it automatically" in comments.summary()["rule"],
           comments.summary()["rule"])
-    check("the hold covers hands too",
-          not comments.rules()["may_send_hands"])
 
     # The rest of this proves the machinery UNDER the hold still holds.
     # Lifted deliberately and by hand -- the only way it is ever lifted, and

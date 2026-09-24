@@ -157,9 +157,8 @@ class Assistant:
         self.mode = "new"
         self.misses = 0
         self.thread = None
-        # Its own job, kept across its restarts: a hand it sent is not cut
-        # off by a restart, and everything of it goes when it is stopped --
-        # or when the manager itself goes, kill-on-close.
+        # Its own job, kept across its restarts: everything of it goes when
+        # it is stopped -- or when the manager itself goes, kill-on-close.
         self.job = tray.keep_the_room_with_me()
         self.reload()
         self.strikes = tray.Strikes(self.name)

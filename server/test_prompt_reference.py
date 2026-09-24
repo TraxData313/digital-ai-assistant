@@ -117,7 +117,7 @@ class ReferenceTests(unittest.TestCase):
         self.assertNotIn("wants_preview", summary)
         self.assertIn(before_task["wants"], self.read(summary["read"])["text"].replace("\n│ ", ""))
         jobs_view = brain._jobs_block()
-        self.assertIn("paused", jobs_view[0]["worker_execution"])
+        self.assertNotIn("worker_execution", jobs_view[0])
         self.assertLess(len(jobs_view[0]["decided_preview"]), 130)
         self.assertIn("Original goal", self.read(jobs_view[0]["read"])["text"])
         for i in range(61):
