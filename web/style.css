@@ -1044,6 +1044,108 @@ a.res-val:hover { color: var(--ink); }
 .my-notes .row { display: flex; gap: 12px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
 .my-notes .quiet { font-size: 14px; }
 
+/* --- its notebook ----------------------------------------------------------
+   The assistant's own notes as a table: a meter against the cap, the cap
+   box, and one row per note with only its first words until it is opened.
+   Numbers line up in tabular figures; a vote that is not zero wears its
+   colour, and an opened note the assistant's own teal. */
+.nb-top { display: flex; align-items: flex-end; gap: 12px 28px; flex-wrap: wrap; margin: 6px 0 6px; }
+.nb-usage { flex: 1 1 280px; min-width: 0; }
+.nb-figs {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+  font-size: 15px; color: var(--dim); font-variant-numeric: tabular-nums; margin-bottom: 6px;
+}
+.nb-figs b { color: var(--ink); font-weight: 600; font-size: 18px; }
+.nb-pct { color: var(--ink); display: inline-flex; align-items: center; gap: 8px; }
+.nb-bar { height: 6px; border-radius: 3px; background: rgba(232, 226, 219, .12); overflow: hidden; }
+.nb-bar i { display: block; height: 100%; border-radius: 3px; background: var(--mint); transition: width .4s ease; }
+.nb-usage.near .nb-bar i { background: var(--essence); }
+.nb-usage.over .nb-bar i { background: var(--bad); }
+.nb-usage.over .nb-pct { color: var(--bad); }
+.nb-cap { display: flex; align-items: center; gap: 8px; flex: none; }
+.nb-cap label { color: var(--faint); font-size: 12.5px; letter-spacing: .1em; text-transform: uppercase; }
+.nb-cap input {
+  width: 96px; background: var(--well); color: var(--ink); border: 1px solid var(--line);
+  border-radius: 6px; padding: 4px 8px; font: inherit; font-size: 15px; font-variant-numeric: tabular-nums;
+}
+.nb-cap input:focus { outline: none; border-color: var(--ember); }
+.nb-cap input { -moz-appearance: textfield; appearance: textfield; }
+.nb-cap input::-webkit-outer-spin-button, .nb-cap input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.nb-cap input:disabled { color: var(--dim); }
+.nb-cap .quiet { font-size: 14px; }
+.nb-cap .small-btn:disabled { opacity: .45; cursor: default; }
+.dev p.nb-rule { font-size: 13.5px; color: var(--faint); margin: 2px 0 14px; }
+.dev p.nb-rule.bad { color: var(--bad); }
+
+.nb-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 15.5px; }
+.nb-table col.c-id { width: 3em; }
+.nb-table col.c-up { width: 3.8em; }
+.nb-table col.c-down { width: 4.6em; }
+.nb-table col.c-turns { width: 4.8em; }
+.nb-table col.c-tokens { width: 5.4em; }
+.nb-table th { padding: 0 0 7px; border-bottom: 1px solid var(--line); text-align: left; font-weight: 400; }
+.nb-table th.num { text-align: right; }
+.nb-table th button {
+  background: none; border: 0; padding: 2px 0; color: var(--faint); cursor: pointer;
+  font: inherit; font-size: 12.5px; letter-spacing: .1em; text-transform: uppercase;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.nb-table th button:hover, .nb-table th[aria-sort] button { color: var(--ink); }
+.nb-table th button:focus-visible { outline: 1px solid var(--ember); outline-offset: 2px; border-radius: 3px; }
+.nb-table th .arrow { font-size: 10px; color: var(--ember); visibility: hidden; }
+.nb-table th[aria-sort] .arrow { visibility: visible; }
+.nb-table td { padding: 8px 0; border-bottom: 1px solid rgba(232, 226, 219, .07); vertical-align: top; }
+.nb-table td.num { text-align: right; color: var(--dim); font-variant-numeric: tabular-nums; }
+.nb-table td.id { text-align: left; color: var(--faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.nb-table td.note { padding: 8px 16px 8px 0; cursor: pointer; }
+.nb-table td.note:focus-visible { outline: 1px solid var(--self); outline-offset: -1px; border-radius: 4px; }
+.nb-table td.up.has { color: var(--mint); }
+.nb-table td.down.has { color: var(--bad); }
+.nb-table tbody tr:hover td { background: rgba(255, 255, 255, .025); }
+.nb-table tr.open td { background: rgba(94, 234, 212, .05); }
+.nb-table tr.open td.note { box-shadow: inset 2px 0 0 var(--self); padding-left: 10px; }
+.nb-table tr.gone td { opacity: .5; }
+.nb-first { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
+.nb-whole { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink); line-height: 1.5; }
+.nb-meta { font-size: 13px; color: var(--faint); margin-top: 6px; }
+.nb-tag {
+  display: inline-block; margin-right: 8px; padding: 0 6px; border-radius: 8px; font-size: 11px;
+  letter-spacing: .04em; border: 1px solid currentColor; color: var(--dim); vertical-align: 1px;
+}
+.nb-empty { padding: 16px 0 6px; color: var(--dim); font-style: italic; text-align: center; }
+.dev p.nb-foot { margin: 10px 0 0; }
+.nb-foot label { display: inline-flex; align-items: center; gap: 8px; color: var(--dim); font-size: 14.5px; cursor: pointer; }
+/* A phone has no width for six columns, so each note becomes two lines: its
+   words across the whole row, and its numbers under them, each wearing its
+   own word. The headings stay as a row of sort buttons. */
+@media (max-width: 560px) {
+  .nb-table, .nb-table thead, .nb-table tbody { display: block; width: 100%; }
+  .nb-table colgroup { display: none; }
+  .nb-table thead tr {
+    display: flex; flex-wrap: wrap; gap: 4px 12px; padding-bottom: 7px;
+    border-bottom: 1px solid var(--line);
+  }
+  .nb-table thead th { display: block; padding: 0; border: 0; }
+  .nb-table thead th.note { display: none; }
+  .nb-table th button { font-size: 12px; letter-spacing: .05em; }
+  .nb-pct .pill { font-size: 12px; padding: 0 6px; }
+  .nb-table tr.nb-row {
+    display: grid; grid-template-columns: 2.2em auto auto auto auto 1fr; column-gap: 14px;
+    padding: 9px 0; border-bottom: 1px solid rgba(232, 226, 219, .07);
+  }
+  .nb-table tr.nb-row td { padding: 0; border: 0; background: none; box-shadow: none; }
+  .nb-table tr.nb-row td.id { grid-row: 1 / span 2; }
+  .nb-table tr.nb-row td.note { grid-column: 2 / -1; padding: 0 0 4px; }
+  .nb-table tr.open { background: rgba(94, 234, 212, .05); box-shadow: inset 2px 0 0 var(--self); }
+  .nb-table tr.open td.note { box-shadow: none; }
+  .nb-table tr.open td.id { padding-left: 8px; }
+  .nb-table tr.nb-row td.num { text-align: left; font-size: 13.5px; white-space: nowrap; }
+  .nb-table td.up::after { content: " up"; color: var(--faint); }
+  .nb-table td.down::after { content: " down"; color: var(--faint); }
+  .nb-table td.turns::after { content: " turns"; color: var(--faint); }
+  .nb-table td.tokens::after { content: " tokens"; color: var(--faint); }
+}
+
 /* --- room background ------------------------------------------------------
    Tiny pictures are no help when the choice is an entire room, so every tile
    keeps a wide visible crop.  The grid has no fixed column count: it uses the

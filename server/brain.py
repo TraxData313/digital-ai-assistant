@@ -10,9 +10,9 @@ import threading
 import time
 from pathlib import Path
 
-from . import (clock, db, digest, embed, files, jobs, limits, notes, people,
-               pictures, projects, providers, recall, search, watch, web,
-               worker, overmind)
+from . import (clock, db, digest, embed, files, jobs, limits, notebook, notes,
+               people, pictures, projects, providers, recall, search, watch,
+               web, worker, overmind)
 from . import home
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -406,6 +406,9 @@ RESPONSE_SCHEMA = {
         "budget_target_tokens": {"type": ["integer", "null"]},
         "drop": {"type": "array", "items": {"type": "integer"}},
         "essences": {"type": "array", "items": ESSENCE_OP},
+        # Its notebook: add, remove, or vote on a note. The words are its
+        # own; the shape is in notebook.py.
+        "notebook": {"type": "array", "items": notebook.OP},
         "fetch": {"type": "array", "items": FETCH_OP},
         "search": {"type": "array", "items": SEARCH_OP},
         "shelf": {"type": "array", "items": SHELF_OP},
@@ -438,7 +441,7 @@ RESPONSE_SCHEMA = {
     },
     "required": ["reply", "to", "look_first", "looking", "spark",
                  "budget_target_tokens",
-                 "drop", "essences", "fetch", "search", "shelf", "files",
+                 "drop", "essences", "notebook", "fetch", "search", "shelf", "files",
                  "web", "comments", "worker", "job", "project", "clock",
                  "restart", "watch", "note"],
     "additionalProperties": False,
@@ -574,7 +577,7 @@ def harness_text(voice_on: bool = False, sound: bool = False) -> str:
                 .replace("{{voice_section}}", VOICE_ON_SECTION if voice_on else VOICE_OFF_SECTION)
                 .replace("{{sound_section}}", VOICE_SOUND_SECTION if voice_on and sound else "")
                 .replace("{{owner}}", home.OWNER_NAME)
-                + home.fill(overmind.INSTRUCTIONS))
+                + home.fill(overmind.INSTRUCTIONS + notebook.INSTRUCTIONS))
     return operation_harness(voice_on, sound)
 
 
@@ -621,7 +624,10 @@ def operation_harness(voice_on: bool = False, sound: bool = False) -> str:
     if not providers.codex_only():
         harness = harness.replace("{{standing_terms}}", json.dumps(
             worker.standing_terms(), indent=1, ensure_ascii=False))
-    return home.fill(harness + overmind.INSTRUCTIONS)
+    # The notebook's instructions ride in from its own module rather than
+    # from the harness file, so a home with its own copy of the harness is
+    # told about it too.
+    return home.fill(harness + overmind.INSTRUCTIONS + notebook.INSTRUCTIONS)
 
 
 def system_prompt(voice_on: bool = False, sound: bool = False) -> str:
@@ -1074,6 +1080,7 @@ def build_report(conn, essences) -> dict:
     # row, and looking only at the last answer would step straight over it.
     turn = db.last_reply_row(conn)
     reach = searched = shelf = read = outside = said_back = codex_result = None
+    booked = None
     sent = []
     for ev in db.events_since(conn, turn):
         if ev["kind"] == "files":
@@ -1107,6 +1114,10 @@ def build_report(conn, essences) -> dict:
         elif ev['kind'] == 'codex':
             codex_result = ev['detail']
             problems.extend((ev['detail'] or {}).get('problems') or [])
+        elif ev["kind"] == "notebook":
+            # What each of its notebook operations did, one line apiece.
+            booked = (ev["detail"] or {}).get("lines")
+            problems.extend((ev["detail"] or {}).get("problems") or [])
         elif ev["kind"] == "snag":
             problems.append(ev["summary"])
 
@@ -1115,6 +1126,7 @@ def build_report(conn, essences) -> dict:
     return {"turn": turn, "reach": reach, "search": searched, "shelf": shelf,
             "files": read, "web": outside, "comments": said_back,
             "worker": sent or None, 'codex': codex_result,
+            "notebook": booked,
             "problems": list(dict.fromkeys(problems))}
 
 
@@ -1200,6 +1212,16 @@ def _projects_block(conn) -> list:
         return projects.for_prompt(conn, seen, looked)
     except Exception:
         return []
+
+
+def _notebook_block(conn) -> dict:
+    """Its notebook, or why it could not be read. Never raises into a turn:
+    a book that will not open costs the block, not the answer."""
+    try:
+        return notebook.for_prompt(conn)
+    except Exception as exc:
+        return {"broken": "my notebook could not be read this turn ("
+                          + type(exc).__name__ + ": " + str(exc)[:200] + ")"}
 
 
 def pictures_in(rows) -> list:
@@ -1352,6 +1374,10 @@ def build_prompt(conn, voice_on: bool = False, found=None, woken=None,
     out = {
         "messages": messages,
         "essences": essences,
+        # Its notebook, beside what it keeps: its own short notes, with the
+        # votes it gave each, how many turns each has been kept, and how full
+        # the book is against its cap.
+        "notebook": _notebook_block(conn),
         "out_of_reach": db.dropped_index(conn, DROPPED_INDEX_LIMIT),
         # What an errand costs, in figures, every turn. It was prose in it
         # instructions until the caps moved underneath it and nothing told it.
@@ -2359,6 +2385,27 @@ def run_turn(conn, model: str = DEFAULT_MODEL,
         conn, answer.get("essences"), reply_id, say,
         by_model=meta.get("model_key"))
 
+    # Its notebook, right after its essences: the same kind of housekeeping,
+    # and as much its own. A book that will not open is said, never raised --
+    # the answer is already down and must not be lost to a note.
+    try:
+        booked = notebook.apply(conn, answer.get("notebook"), reply_id)
+    except Exception as exc:
+        booked = {"summary": "broke", "lines": [],
+                  "problems": ["My notebook operations did not run ("
+                               + type(exc).__name__ + ": " + str(exc)[:200]
+                               + "); nothing in it changed that I can vouch for."]}
+    if booked:
+        for line in booked["lines"]:
+            if line.startswith("refused"):
+                say("notebook: " + line, "snag")
+            else:
+                say("notebook: " + line)
+        if not booked["lines"]:
+            for problem in booked["problems"]:
+                say(problem, "snag")
+        db.add_event(conn, reply_id, "notebook", booked["summary"], booked)
+
     drop_ids = [int(i) for i in (answer.get("drop") or [])
                 if int(i) != reply_id and int(i) not in made]
     if drop_ids:
@@ -2491,6 +2538,7 @@ def run_turn(conn, model: str = DEFAULT_MODEL,
             "essences_edited": edited,
             "essences_removed": removed,
             "essences_renamed": renamed,
+            "notebook": booked,
             "reached_back": reached,
             "searched": searched,
             "shelf": shelf,
@@ -2591,6 +2639,8 @@ def _look_round(conn, answer, number: int, say, aloud=False) -> dict:
         stray.append("rows to put down")
     if answer.get("essences"):
         stray.append("essence operations")
+    if answer.get("notebook"):
+        stray.append("notebook operations")
     if answer.get("spark") or answer.get("budget_target_tokens"):
         stray.append("a rewrite of my Spark")
     if stray:

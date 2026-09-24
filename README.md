@@ -124,6 +124,18 @@ the icons a phone keeps, and the browser tab's icon. The
 face the home had before is kept file for file in
 `artwork/portraits/original/`, and choosing it gives exactly that back.
 
+## Its notebook
+
+The assistant keeps a few short notes of its own in front of it every turn,
+about whatever it decides is worth keeping. It can add a note, remove one, or
+vote one up or down; there is no edit, so a note that needs changing is
+removed and written again. Settings shows the notes as a table -- sort by id,
+votes, turns kept or size, and open a note to read it whole. The book has a
+cap in tokens (5,000 to start), the owner's to move there: one note may take
+it 5% past the cap, and past it adding locks until notes are removed or the
+cap is raised. Removed notes stay in the store for the backup, and the
+assistant has no way to read them back.
+
 ## Backups
 
 - Every local copy lives in the home's `all_backups/`, which git never sees:

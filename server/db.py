@@ -191,6 +191,23 @@ CREATE TABLE IF NOT EXISTS task_notices (
     note    TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_task_notices ON task_notices(task, done);
+
+-- Its notebook: short notes of its own, in front of it every turn. Numbered
+-- by the room and never renumbered. Removing one sets `gone` and keeps the
+-- row -- for the backup, not for it: nothing it can do reads a removed note
+-- back. `born` and `gone` are reply rows, so how many turns a note was kept
+-- is counted off its own answers rather than kept by hand. See notebook.py.
+CREATE TABLE IF NOT EXISTS notebook (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    dt      TEXT    NOT NULL,           -- when it was written
+    text    TEXT    NOT NULL,
+    tokens  INTEGER NOT NULL,
+    up      INTEGER NOT NULL DEFAULT 0,
+    down    INTEGER NOT NULL DEFAULT 0,
+    born    INTEGER NOT NULL,           -- the reply row of the turn that wrote it
+    gone    INTEGER,                    -- the reply row of the turn that removed it
+    gone_dt TEXT
+);
 """
 
 

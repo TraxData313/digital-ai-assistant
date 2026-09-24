@@ -28,7 +28,7 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs, unquote
 
 from . import (angel, backup, brain, clock, db, digest, dream, jobs, limits,
-               models_dir, notes, providers,
+               models_dir, notebook, notes, providers,
                people, pictures, projects, recall, wallpapers, watch, worker, native_proof, native_tools, overmind, live_voice)
 from . import home, homes, portraits
 
@@ -947,6 +947,10 @@ class Handler(BaseHTTPRequestHandler):
                 # Their free notes, for the box under Settings: each person's
                 # text, its weight, when it was saved, and the wall.
                 "notes": notes.status(),
+                # Its notebook, for the table under Settings: every note with
+                # its votes, turns kept and size, the removed ones marked,
+                # and the cap.
+                "notebook": notebook.status(conn),
                 # Where the models we fetch ourselves are kept, for the
                 # folder box under Settings: the choice, what is in it, what
                 # is left in the old place, and LM Studio's own beside it.
@@ -1126,6 +1130,13 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/recall":
             return self._json(recall.status())
+
+        if path == "/api/notebook":
+            conn = db.connect()
+            try:
+                return self._json(notebook.status(conn))
+            finally:
+                conn.close()
 
         if path == "/api/digest":
             return self._json(digest.status())
@@ -1601,6 +1612,28 @@ class Handler(BaseHTTPRequestHandler):
                     {"error": "the notes did not go down: "
                               + type(exc).__name__ + ": " + str(exc)}, 500)
             return self._json(notes.status())
+
+        # The notebook's cap. The notes are the assistant's alone -- nothing
+        # here writes one -- and the cap is the owner's: it is what the
+        # assistant is told to ask for when the book is full. So the door's
+        # own answer decides, not the free person switch.
+        if self.path == "/api/notebook":
+            if getattr(self, "_who", "") != home.OWNER:
+                return self._json({"error": "the notebook's cap is "
+                                   + home.OWNER_NAME + "'s to move"}, 403)
+            try:
+                notebook.set_cap(body.get("cap"))
+            except notebook.Refused as exc:
+                return self._json({"error": str(exc)}, 400)
+            except OSError as exc:
+                return self._json(
+                    {"error": "the cap did not go down: "
+                              + type(exc).__name__ + ": " + str(exc)}, 500)
+            conn = db.connect()
+            try:
+                return self._json(notebook.status(conn))
+            finally:
+                conn.close()
 
         # A wallpaper is accepted as bytes rather than a path.  `wallpapers`
         # reads its magic bytes and dimensions, derives its own safe filename,

@@ -546,6 +546,9 @@ function eventDetail(e) {
     return [d.why ? "why: " + d.why : "", d.brief || ""].filter(Boolean).join("\n\n");
   }
   if (e.kind === "spark") return JSON.stringify(d, null, 2);
+  if (e.kind === "notebook") {
+    return ((d.lines && d.lines.length) ? d.lines : (d.problems || [])).join("\n");
+  }
   if (e.kind === "dream") {
     const bits = [];
     if (d.report) bits.push(MY_NAME.toUpperCase() + "'S ACCOUNT OF THE NIGHT\n\n" + d.report);
@@ -676,6 +679,7 @@ const ACT = {
   "essence-remove": ["Let go of an essence", "essence"],
   drop: ["Put out of memory", "drop"],
   spark: ["Rewrote the Spark", "spark"],
+  notebook: ["Notebook", "notebook"],
   snag: ["Snag", "snag"],
   sent: ["Sent an errand", "sent"],
   worker: ["Came back", "worker"],
@@ -2848,6 +2852,175 @@ function paintProviders() {
   wireProviders();
 }
 
+// --- its notebook ------------------------------------------------------------
+// The assistant's own short notes, as a table to sort and read: its votes,
+// how many turns each note has been kept and what it weighs, and only the
+// first words until a note is opened. The notes are its alone -- nothing on
+// this page writes one. The cap is the owner's, and the meter says how close
+// the book is to it.
+let NB_SORT = { key: "id", dir: 1 };
+const NB_OPEN = new Set();
+let NB_GONE = false;
+
+// Key, heading, and which way a first click sorts: the numbers most-first,
+// the id and the words in their own order.
+const NB_COLS = [
+  ["id", "#", 1, "the room numbers each note; a number is never given out twice"],
+  ["text", "Note", 1, ""],
+  ["up", "Up", -1, "votes for it"],
+  ["down", "Down", -1, "votes against it"],
+  ["turns", "Turns", -1, "how many of its turns the note has been kept"],
+  ["tokens", "Tokens", -1, "estimated, about four characters a token"],
+];
+
+function nbState() {
+  return (state && state.notebook) || null;
+}
+
+function notebookSub() {
+  const nb = nbState();
+  if (!nb) return "";
+  const n = nb.count || 0;
+  return (n ? n + " note" + (n === 1 ? "" : "s") : "empty") +
+    " · ~" + (nb.used || 0).toLocaleString() + " of " + (nb.cap || 0).toLocaleString() +
+    " tokens" + (nb.locked ? " · full" : "");
+}
+
+function nbSorted(notes) {
+  const { key, dir } = NB_SORT;
+  const val = (n) => key === "text" ? String(n.text || "").toLowerCase() : Number(n[key]) || 0;
+  return notes.slice().sort((a, b) => {
+    const x = val(a), y = val(b);
+    return ((x < y ? -1 : x > y ? 1 : 0) * dir) || (a.id - b.id);
+  });
+}
+
+function nbRow(n) {
+  const open = NB_OPEN.has(n.id);
+  const one = String(n.text || "").replace(/\s+/g, " ").trim();
+  const said = "written " + shortWhen(n.dt) + (n.gone ? " · removed " + shortWhen(n.gone_dt) : "");
+  const tag = n.gone ? `<span class="nb-tag">removed</span>` : "";
+  const words = open
+    ? `<div class="nb-whole">${esc(n.text)}</div><div class="nb-meta">${esc(said)}</div>`
+    : `<span class="nb-first">${tag}${esc(one)}</span>`;
+  return `<tr class="nb-row${open ? " open" : ""}${n.gone ? " gone" : ""}" data-k="nb:${n.id}">` +
+    `<td class="num id">${n.id}</td>` +
+    `<td class="note" data-nb-note="${n.id}" tabindex="0" role="button" aria-expanded="${open}"` +
+    ` title="${open ? "fold it back" : "read it whole"}">${words}</td>` +
+    `<td class="num up${n.up ? " has" : ""}">${n.up}</td>` +
+    `<td class="num down${n.down ? " has" : ""}">${n.down}</td>` +
+    `<td class="num turns">${(n.turns || 0).toLocaleString()}</td>` +
+    `<td class="num tokens">${(n.tokens || 0).toLocaleString()}</td></tr>`;
+}
+
+function devNotebook() {
+  const nb = nbState();
+  if (!nb) return `<p class="quiet">looking…</p>`;
+  const pct = nb.pct || 0;
+  const tone = nb.locked ? " over" : pct >= 80 ? " near" : "";
+  const mine = (state.who || OWNER) === OWNER;
+  let html = `<div class="nb-top"><div class="nb-usage${tone}">` +
+    `<div class="nb-figs"><span><b>~${(nb.used || 0).toLocaleString()}</b> of ${(nb.cap || 0).toLocaleString()} tokens</span>` +
+    `<span class="nb-pct">${nb.locked ? `<span class="pill bad">full — adding locked</span> ` : ""}${pct}%</span></div>` +
+    `<div class="nb-bar" role="meter" aria-label="how full the notebook is" aria-valuemin="0"` +
+    ` aria-valuemax="${nb.cap}" aria-valuenow="${nb.used}"><i style="width:${Math.min(100, pct)}%"></i></div></div>` +
+    `<div class="nb-cap"><label for="nb-cap">cap</label>` +
+    `<input id="nb-cap" type="number" inputmode="numeric" min="${nb.min_cap}" max="${nb.max_cap}" step="100"` +
+    ` value="${nb.cap}" data-saved="${nb.cap}"${mine ? "" : ` disabled title="${esc(PEOPLE[OWNER] || OWNER)}'s to move"`}>` +
+    `<span class="quiet">tokens</span>` +
+    (mine ? `<button class="small-btn" id="nb-cap-save" disabled>save</button>` : "") +
+    `</div></div>`;
+  html += `<p class="nb-rule" id="nb-cap-note">A note may go ${nb.grace_pct}% past the cap; past it, adding locks ` +
+    `until ${esc(MY_NAME)} removes notes or the cap is raised.</p>`;
+
+  const notes = (nb.notes || []).filter((n) => NB_GONE || !n.gone);
+  if (!notes.length) {
+    html += `<div class="nb-empty">${nb.count || nb.removed
+      ? "Nothing in it right now."
+      : `No notes yet — when ${esc(MY_NAME)} writes one, it shows up here.`}</div>`;
+  } else {
+    html += `<table class="nb-table"><colgroup><col class="c-id"><col><col class="c-up">` +
+      `<col class="c-down"><col class="c-turns"><col class="c-tokens"></colgroup><thead><tr>` +
+      NB_COLS.map(([key, label, , help]) => {
+        const on = NB_SORT.key === key;
+        const sort = on ? ` aria-sort="${NB_SORT.dir > 0 ? "ascending" : "descending"}"` : "";
+        const arrow = `<span class="arrow" aria-hidden="true">${on && NB_SORT.dir < 0 ? "▾" : "▴"}</span>`;
+        return `<th class="${key === "text" ? "note" : key === "id" ? "id" : "num"}"${sort}>` +
+          `<button type="button" data-nb-sort="${key}"${help ? ` title="${esc(help)}"` : ""}>${label}${arrow}</button></th>`;
+      }).join("") +
+      `</tr></thead><tbody>` + nbSorted(notes).map(nbRow).join("") + `</tbody></table>`;
+  }
+  if (nb.removed) {
+    html += `<p class="nb-foot"><label><input type="checkbox" id="nb-gone"${NB_GONE ? " checked" : ""}>` +
+      ` show removed (${nb.removed})</label></p>`;
+  }
+  return html;
+}
+
+// The cap box stands still while it holds a number not yet saved.
+function nbBusy() {
+  const el = $("nb-cap");
+  return !!el && String(el.value) !== String(el.dataset.saved || "");
+}
+
+// Only this section, off its own clicks: the rest of Settings keeps still,
+// and a focused checkbox does not stop the table from answering it.
+function paintNotebook() {
+  const el = $("view-dev") && $("view-dev").querySelector('.dev[data-k="dev:notebook"]');
+  if (!el) return;
+  keepScroll(() => {
+    patchHtml(el, dev("dev:notebook", MY_NAME + "'s notebook", notebookSub(), devNotebook()), true);
+  });
+  wireNotebook();
+}
+
+function wireNotebook() {
+  const box = $("view-dev") && $("view-dev").querySelector('.dev[data-k="dev:notebook"]');
+  if (!box) return;
+  for (const b of box.querySelectorAll("[data-nb-sort]")) {
+    b.onclick = () => {
+      const key = b.dataset.nbSort;
+      const first = (NB_COLS.find((c) => c[0] === key) || [])[2] || 1;
+      NB_SORT = NB_SORT.key === key ? { key, dir: -NB_SORT.dir } : { key, dir: first };
+      paintNotebook();
+    };
+  }
+  for (const cell of box.querySelectorAll("[data-nb-note]")) {
+    const flip = () => {
+      const id = Number(cell.dataset.nbNote);
+      if (NB_OPEN.has(id)) NB_OPEN.delete(id); else NB_OPEN.add(id);
+      paintNotebook();
+    };
+    // A reader selecting words to copy is not asking for the note to fold.
+    cell.onclick = () => { if (!String(document.getSelection() || "")) flip(); };
+    cell.onkeydown = (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); flip(); }
+    };
+  }
+  const gone = $("nb-gone");
+  if (gone) gone.onchange = () => { NB_GONE = gone.checked; paintNotebook(); };
+  const inp = $("nb-cap"), save = $("nb-cap-save"), note = $("nb-cap-note");
+  if (!inp || !save) return;
+  inp.oninput = () => { save.disabled = !nbBusy(); };
+  inp.onkeydown = (e) => {
+    if (e.key === "Enter" && !save.disabled) save.click();
+    if (e.key === "Escape") { inp.value = inp.dataset.saved; save.disabled = true; inp.blur(); }
+  };
+  save.onclick = async () => {
+    save.disabled = true;
+    try {
+      const got = await post("api/notebook", { cap: inp.value });
+      if (state) state.notebook = got;
+    } catch (e) {
+      if (note) { note.textContent = String(e.message || e); note.classList.add("bad"); }
+      save.disabled = false;
+      return;
+    }
+    inp.blur();
+    paintNotebook();
+  };
+}
+
 function renderDev() {
   if (!state || backingUp) return;
   const a = document.activeElement;
@@ -2876,6 +3049,7 @@ function renderDev() {
     ["dev:memory", () => dev("dev:memory", MY_NAME + "'s memory right now",
         `${me.messages_loaded ?? "?"} messages \u00b7 ${me.essences_loaded ?? "?"} essences \u00b7 ~${k(me.prompt_tokens_est)} tokens`,
         devMemory())],
+    ["dev:notebook", () => dev("dev:notebook", MY_NAME + "'s notebook", notebookSub(), devNotebook())],
     ["dev:notes", () => dev("dev:notes", notesTitle(), notesSub(), devNotes())],
     ["dev:tools", () => dev("dev:tools", MY_NAME + "'s tools and instructions", "", devTools())],
     ["dev:backup", () => dev("dev:backup", "backup", state.backup && state.backup.last ? "last " + shortWhen(state.backup.last.taken) : "none yet", devBackup())],
@@ -2921,6 +3095,8 @@ function renderDev() {
         }
         // The notes box stands still while it holds something unsaved.
         if (key === "dev:notes" && el && notesBusy()) continue;
+        // And the notebook's cap, while it holds a number not yet saved.
+        if (key === "dev:notebook" && el && nbBusy()) continue;
         // And the folder box, while it holds a path not yet kept.
         if (key === "dev:models" && el && modelsBusy()) continue;
         // A selected file cannot be restored into a file input after a redraw;
@@ -2947,6 +3123,7 @@ function renderDev() {
   wireProviders();
   wireDigest();
   wireNotes();
+  wireNotebook();
   wireModels();
   wireWallpapers();
 }

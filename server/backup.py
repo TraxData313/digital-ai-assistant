@@ -82,6 +82,8 @@ ALSO = ["spark.md", "spark.history", "plan.json", "voice.json", "recall.json",
         # neither git nor this list once -- a restore would
         # have lost every open job silently.
         "jobs.json", "digest.json",
+        # The notebook's cap. The notes themselves are a table in the store.
+        "notebook.json",
         # The pixels themselves. Rows point at these by name, so a store
         # restored without them would hold lines that say a picture was shown
         # and nothing to show -- the one shape of loss this folder exists to
@@ -89,7 +91,7 @@ ALSO = ["spark.md", "spark.history", "plan.json", "voice.json", "recall.json",
         # also the only thing in here that cannot be written again.
         "pictures"]
 
-TABLES = ("rows", "events", "vectors")
+TABLES = ("rows", "events", "vectors", "notebook")
 
 
 def _counts(conn) -> dict:
