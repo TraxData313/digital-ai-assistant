@@ -380,6 +380,16 @@ details.act > summary { cursor: pointer; }
 .rc .recall-more { margin: 6px 0 2px 54px; padding: 1px 8px; }
 .rc .rc-raw { margin-top: 8px; }
 .rc .rc-raw > summary { cursor: pointer; color: var(--faint); font-size: 13.5px; }
+.try-search { margin: 14px 0 6px; padding-top: 10px; border-top: 1px solid var(--line); }
+.try-search .try-line { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 6px; }
+.try-search .try-field { display: flex; flex-direction: column; gap: 2px; font-size: 13.5px; color: var(--dim); }
+.try-search .try-field.wide { width: 100%; }
+.try-search input[type=text], .try-search textarea {
+  background: var(--well); color: var(--ink); border: 1px solid var(--line); border-radius: 4px;
+  padding: 4px 6px; font: inherit; font-size: 14.5px; min-width: 0;
+}
+.try-search textarea { width: 100%; box-sizing: border-box; resize: vertical; }
+.try-search .try-line .try-field input { width: 170px; max-width: 100%; }
 .rc .rc-raw pre { white-space: pre-wrap; font-size: 13px; margin: 6px 0 0; }
 
 /* An essence: its name on the front, the whole of it on a click. Ember --

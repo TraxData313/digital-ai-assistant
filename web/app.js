@@ -644,7 +644,7 @@ function recallText(d) {
 function wantClass(w) { return w == null ? "none" : w >= 70 ? "hi" : w >= 30 ? "mid" : "lo"; }
 
 function recallRowHtml(r, reviewed) {
-  const want = reviewed
+  const want = reviewed && r.want !== undefined
     ? `<span class="rc-want ${wantClass(r.want)}" title="how much the reviewer thinks ${esc(MY_NAME)} would want to read it">${r.want == null ? "\u2013" : r.want + "%"}</span>`
     : `<span class="rc-want none"></span>`;
   return `<div class="rc-row">${want}<div class="rc-main">` +
@@ -716,6 +716,7 @@ async function recallMore(key, btn) {
     RECALL_MORE.set(key, Object.assign({}, prev, { error: String(err.message || err) }));
   }
   render();
+  if (key === "try") paintTry();
 }
 
 // What the digest organ did to one report: stood in, or missed out loud.
@@ -1553,7 +1554,7 @@ function renderRecall() {
   const line = recallLine(rc);
   el.className = "recall " + line.cls;
   el.textContent = line.text;
-  el.title = (rc && rc.detail) ? rc.detail : "the automatic memory \u2014 details under Settings";
+  el.title = (rc && rc.detail) ? rc.detail : "the automatic memory \u2014 details under Menu";
 }
 
 const WIN_NAME = {
@@ -2020,8 +2021,52 @@ function devRecallConfig() {
     `<pre>${esc(rc.config_text || "")}</pre>`);
 }
 
+// Try a search by hand: the automatic memory's own search on what is typed
+// here, drawn with the same card a turn gets. Kept in memory so a redraw of
+// the tab brings back what was typed and what came out.
+const TRY = { essence: "", keywords: "", from: "", to: "", review: false, result: null, busy: false };
+
+function devRecallSearch() {
+  const field = (name, label, ph, wide) =>
+    `<label class="try-field${wide ? " wide" : ""}">${label}` +
+    `<input data-try="${name}" type="text" spellcheck="false" placeholder="${esc(ph)}" value="${esc(TRY[name])}"></label>`;
+  return `<div class="try-search"><div class="cap">Try a search</div>` +
+    `<label class="try-field wide">essence<textarea data-try="essence" rows="2" spellcheck="false" ` +
+    `placeholder="what an essence about it would say">${esc(TRY.essence)}</textarea></label>` +
+    `<div class="try-line">` + field("keywords", "keywords", "comma, separated") +
+    field("from", "from", "YYYY-MM-DD") + field("to", "to", "YYYY-MM-DD") + `</div>` +
+    `<div class="try-line"><button class="btn" id="try-go"${TRY.busy ? " disabled" : ""}>${TRY.busy ? "searching\u2026" : "search"}</button>` +
+    `<label class="quiet"><input type="checkbox" id="try-review"${TRY.review ? " checked" : ""}> ` +
+    `also ask the reviewer (it judges against the room's last lines, and takes a few seconds)</label></div>` +
+    `<div id="try-out">${TRY.result ? recallHtml(TRY.result, "try") : ""}</div></div>`;
+}
+
+function paintTry() {
+  const out = $("try-out");
+  if (out) out.innerHTML = TRY.result ? recallHtml(TRY.result, "try") : "";
+  const go = $("try-go");
+  if (go) { go.disabled = TRY.busy; go.textContent = TRY.busy ? "searching\u2026" : "search"; }
+}
+
+async function runTry() {
+  if (TRY.busy) return;
+  TRY.busy = true;
+  RECALL_MORE.delete("try");
+  paintTry();
+  try {
+    TRY.result = await post("api/recall/search", {
+      asked: { essence: TRY.essence, keywords: TRY.keywords, from: TRY.from, to: TRY.to },
+      review: TRY.review });
+  } catch (e) {
+    TRY.result = { missed: String(e.message || e), asked: null };
+  }
+  TRY.busy = false;
+  paintTry();
+}
+
 function devRecallSection() {
-  return `<div id="recall-live">${devRecall()}</div><div id="recall-config">${devRecallConfig()}</div>`;
+  return `<div id="recall-live">${devRecall()}</div><div id="recall-search">${devRecallSearch()}</div>` +
+    `<div id="recall-config">${devRecallConfig()}</div>`;
 }
 
 // Redraw only what changed, so a download's progress moves without the whole
@@ -4452,6 +4497,20 @@ MAIN.addEventListener("toggle", (e) => {
 MAIN.addEventListener("click", (e) => {
   const b = e.target.closest(".recall-more");
   if (b) { e.preventDefault(); recallMore(b.dataset.rk, b); }
+  if (e.target.closest("#try-go")) { e.preventDefault(); runTry(); }
+});
+
+MAIN.addEventListener("input", (e) => {
+  const name = e.target.dataset && e.target.dataset.try;
+  if (name) TRY[name] = e.target.value;
+  if (e.target.id === "try-review") TRY.review = e.target.checked;
+});
+
+MAIN.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" || !(e.target.dataset && e.target.dataset.try)) return;
+  if (e.target.tagName === "TEXTAREA" && e.shiftKey) return;
+  e.preventDefault();
+  runTry();
 });
 
 MAIN.addEventListener("click", async (e) => {

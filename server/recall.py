@@ -676,9 +676,10 @@ REVIEW_SHAPE = {
 }
 
 
-def _complete(key: str, messages: list, schema: dict, name: str) -> dict:
+def _complete(key: str, messages: list, schema: dict, name: str,
+              max_out: int = MAX_OUT) -> dict:
     body = {"model": key, "messages": messages, "temperature": 0.1,
-            "max_tokens": MAX_OUT, "stream": False,
+            "max_tokens": max_out, "stream": False,
             "response_format": {"type": "json_schema",
                                 "json_schema": {"name": name, "strict": True,
                                                 "schema": schema}}}
@@ -702,7 +703,13 @@ def write_messages(told: dict, examples: list, lines: list) -> list:
             {"role": "user", "content": user}]
 
 
+# All the results the reviewer reads together, in characters; each gets
+# `read_chars` or its share of this, whichever is smaller.
+REVIEW_BUDGET = 16000
+
+
 def review_messages(told: dict, lines: list, results: list, texts: dict, chars: int) -> list:
+    chars = min(chars, REVIEW_BUDGET // max(1, len(results)))
     parts = []
     for r in results:
         parts.append("id " + str(r["id"]) + " (" + r["date"] + "):\n"
@@ -722,6 +729,30 @@ HOW = ("A small local model's suggestions, not memories: it wrote the search "
        "model's note on it. Read one by id if it looks worth it; "
        "`search` with `asked.essence` as the restatement and a higher limit "
        "shows the ones further down.")
+
+
+def _review(key, told, lines, found, cfg, block, sent):
+    """The reviewer's note and want on each result, written into `block`."""
+    sent["review"] = review_messages(told, lines, found["results"],
+                                     found["texts"], cfg["read_chars"])
+    t = time.time()
+    try:
+        reviewed = _complete(key, sent["review"], REVIEW_SHAPE, "review",
+                             max_out=max(MAX_OUT, 160 * len(found["results"])))
+        block["review_s"] = round(time.time() - t, 2)
+        said = {}
+        for x in reviewed.get("results") or []:
+            if isinstance(x, dict) and "id" in x:
+                said[int(x["id"])] = x
+        for r in block["results"]:
+            x = said.get(r["id"])
+            if x is None:
+                r["want"], r["note"] = None, "(the reviewer said nothing on this one)"
+            else:
+                r["want"] = max(0, min(100, int(x.get("want") or 0)))
+                r["note"] = " ".join(str(x.get("note") or "").split())
+    except (NoServer, LMError, ValueError, TypeError) as e:
+        block["notes"].append("the review failed: " + str(e))
 
 
 def _block(key, **fields) -> dict:
@@ -770,25 +801,7 @@ def _run(key, lines, cfg, box):
         block["notes"] = found["notes"]
         block["results"] = found["results"]
         if found["results"]:
-            sent["review"] = review_messages(told, lines, found["results"],
-                                             found["texts"], cfg["read_chars"])
-            t = time.time()
-            try:
-                reviewed = _complete(key, sent["review"], REVIEW_SHAPE, "review")
-                block["review_s"] = round(time.time() - t, 2)
-                said = {}
-                for x in reviewed.get("results") or []:
-                    if isinstance(x, dict) and "id" in x:
-                        said[int(x["id"])] = x
-                for r in block["results"]:
-                    x = said.get(r["id"])
-                    if x is None:
-                        r["want"], r["note"] = None, "(the reviewer said nothing on this one)"
-                    else:
-                        r["want"] = max(0, min(100, int(x.get("want") or 0)))
-                        r["note"] = " ".join(str(x.get("note") or "").split())
-            except (NoServer, LMError, ValueError, TypeError) as e:
-                block["notes"].append("the review failed: " + str(e))
+            _review(key, told, lines, found, cfg, block, sent)
     except NoServer as e:
         _set(phase="no server", detail=str(e))
         block["missed"] = str(e)
@@ -807,6 +820,53 @@ def _run(key, lines, cfg, box):
         with LOCK:
             if STATE["phase"] == "working":
                 STATE["phase"] = "loaded"
+
+
+# The Menu's search box shows more than a turn does.
+TRY_TOP = 10
+TRY_KEYWORD_TOP = 5
+
+
+def _asked_from(spec: dict) -> dict:
+    """What somebody typed, in the shape the writer's answer has."""
+    words = spec.get("keywords") or []
+    if isinstance(words, str):
+        words = words.split(",")
+    return {"essence": " ".join(str(spec.get("essence") or "").split()),
+            "keywords": [str(k).strip() for k in words if str(k).strip()][:6],
+            "from": str(spec.get("from") or "").strip() or None,
+            "to": str(spec.get("to") or "").strip() or None}
+
+
+def try_search(conn, spec: dict, review: bool = False) -> dict:
+    """The Menu's search box: the automatic memory's own search on what the
+    owner typed, shaped like a run so it is drawn the same way. The reviewer
+    reads the results against the room as it stands only when asked.
+    Read-only."""
+    started = time.time()
+    cfg = dict(settings(), top=TRY_TOP, keyword_top=TRY_KEYWORD_TOP)
+    asked = _asked_from(spec or {})
+    block = _block(cfg["model"], asked=asked, typed=True)
+    if not asked["essence"] and not asked["keywords"]:
+        block["missed"] = "type an essence or a keyword to search with"
+        return block
+    try:
+        t = time.time()
+        found = search(conn, asked, cfg)
+        block["search_s"] = round(time.time() - t, 2)
+        block.update(searched=found["searched"], notes=found["notes"],
+                     keyword_counts=found["keyword_counts"], results=found["results"])
+        if review and found["results"]:
+            if not cfg["model"]:
+                block["notes"].append("no model is chosen, so nothing was reviewed")
+            else:
+                lines = last_lines(conn, cfg["lines"])
+                block["read_lines"] = len(lines)
+                _review(cfg["model"], config(), lines, found, cfg, block, {})
+    except embed.Unavailable as e:
+        block["missed"] = "the embedder is not available: " + str(e)
+    block["took_s"] = round(time.time() - started, 2)
+    return block
 
 
 def summary(block: dict) -> str:

@@ -1480,6 +1480,16 @@ class Handler(BaseHTTPRequestHandler):
         # more.
         if self.path == "/api/recall/choose":
             return self._json(recall.choose(body.get("model")))
+        # The Menu's search box: the automatic memory's search on what the
+        # owner typed, reviewed only when asked. Read-only.
+        if self.path == "/api/recall/search":
+            conn = db.connect()
+            try:
+                return self._json(recall.try_search(conn, body.get("asked") or {},
+                                                    review=bool(body.get("review"))))
+            finally:
+                conn.close()
+
         # "Show more": the same search a run wrote, further down the list,
         # without the review. Read-only.
         if self.path == "/api/recall/more":
