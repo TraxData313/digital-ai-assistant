@@ -114,11 +114,15 @@ function esc(s) {
 
 // The assistant's replies carry a little markdown: bold, italic and code. Escaped first,
 // so the marks can never be markup.
+//
+// And the sounds its voice makes where one is written, "(laugh)", drawn the way
+// the mood under a line is: part of what was said, set apart from the words.
 function md(s) {
   return esc(s)
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
-    .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<i>$2</i>");
+    .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<i>$2</i>")
+    .replace(/\((?:laugh|sigh|cough|clears throat)\)/gi, '<span class="sfx">$&</span>');
 }
 
 const MONTH_SAID = {

@@ -567,7 +567,7 @@ def spark_budget() -> int:
     return int(m.group(1)) if m else 10_000
 
 
-def harness_text(voice_on: bool = False, sound: bool = False) -> str:
+def harness_text(voice_on: bool = False, sound: bool = False, events=()) -> str:
     if providers.codex_only():
         from . import prompt_reference
         text = home.read_prompt("routine_prompt.md")
@@ -575,13 +575,13 @@ def harness_text(voice_on: bool = False, sound: bool = False) -> str:
                 .replace("{{max_looks}}", str(MAX_LOOKS))
                 .replace("{{voice_field}}", VOICE_SOUND_FIELD if voice_on and sound else "")
                 .replace("{{voice_section}}", VOICE_ON_SECTION if voice_on else VOICE_OFF_SECTION)
-                .replace("{{sound_section}}", VOICE_SOUND_SECTION if voice_on and sound else "")
+                .replace("{{sound_section}}", sound_sections(voice_on, sound, events))
                 .replace("{{owner}}", home.OWNER_NAME)
                 + home.fill(overmind.INSTRUCTIONS + notebook.INSTRUCTIONS))
-    return operation_harness(voice_on, sound)
+    return operation_harness(voice_on, sound, events)
 
 
-def operation_harness(voice_on: bool = False, sound: bool = False) -> str:
+def operation_harness(voice_on: bool = False, sound: bool = False, events=()) -> str:
     """Its instructions, with the parts it cannot currently use left out."""
     harness = home.read_prompt("harness_prompt.md")
     if providers.codex_only():
@@ -606,7 +606,7 @@ def operation_harness(voice_on: bool = False, sound: bool = False) -> str:
         "{{voice_field}}", VOICE_SOUND_FIELD if voice_on and sound else "")
     harness = harness.replace(
         "{{voice_section}}", VOICE_ON_SECTION if voice_on else VOICE_OFF_SECTION).replace(
-        "{{sound_section}}", VOICE_SOUND_SECTION if voice_on and sound else "")
+        "{{sound_section}}", sound_sections(voice_on, sound, events))
     # The floor is one number in one file. It is written into its instructions
     # from there rather than typed out twice, because the day it moves is
     # exactly the day nobody remembers to change the other copy. Under an
@@ -630,7 +630,7 @@ def operation_harness(voice_on: bool = False, sound: bool = False) -> str:
     return home.fill(harness + overmind.INSTRUCTIONS + notebook.INSTRUCTIONS)
 
 
-def system_prompt(voice_on: bool = False, sound: bool = False) -> str:
+def system_prompt(voice_on: bool = False, sound: bool = False, events=()) -> str:
     """The Spark first, then the people's free notes when any have been
     written, then the instructions. The notes sit in the cached half on purpose: like
     the Spark they move only when somebody edits them, and a house with no
@@ -638,13 +638,18 @@ def system_prompt(voice_on: bool = False, sound: bool = False) -> str:
     sep = chr(10) * 2 + "---" + chr(10) * 2
     free = notes.for_prompt()
     return (read_spark() + sep + ((free + sep) if free else "")
-            + harness_text(voice_on, sound))
+            + harness_text(voice_on, sound, events))
 
 
 VOICE_SOUND_FIELD = (
     "- `sound` — how I want this line delivered, or `null`. Not words to read.\n")
 
 
+# It used to close on "`null` is the ordinary answer", and it was taken at its
+# word. claude-voice found the same with its own sessions: told that most lines
+# want no mood, they wrote almost none, and the engine that can act read like
+# the ones that cannot. Its owner's word on hearing one was not to be shy with
+# the mood, so it is invited now, with the one real warning kept.
 VOICE_SOUND_SECTION = """### I can say how it sounds
 
 My own voice is speaking right now — the one {{owner}} made of me — and it runs on an
@@ -659,10 +664,61 @@ things about the delivery. `Speak quickly and brightly, almost laughing.`
 `Slow and low, close to the ear, unhurried.`
 
 It is not read out and it does not change a word of my reply — it colours how the
-reply is said. {{owner}} sees it written under the line. `null` is the ordinary answer;
-I set it when there is something in how I mean it that the words alone would lose.
+whole reply is said. {{owner}} sees it written under the line. I am not shy with it:
+delight when something finally works, calm for bad news, a whisper for a secret.
+`null` when the words carry it on their own; the one way to spoil it is a mood on
+every single reply.
 
 """
+
+
+# The sounds an engine makes when one is written into the words -- Breeze's
+# (laugh), (sigh), (cough) and (clears throat). They ride inside the text rather
+# than beside it, so there is no field for them: an engine that cannot make one
+# takes it out before speaking, and this section is the only thing that decides
+# whether it writes any.
+VOICE_EVENTS_SECTION = """### Sounds, written where they happen
+
+The engine speaking for me now does more than read. A sound written into my words in
+brackets, at the place it happens, is made rather than said: {{sounds}}.
+
+{{example}}- **The bracket is the sound**, so nothing spells it out again: words written beside
+  it are read on top of it. One at a time, never a row of them.
+- **Where it happens.** Opening a sentence or in the middle of one, the way a laugh
+  breaks into what somebody is saying.
+- **Only in what is heard:** `reply`, and `looking` when I go to look first.
+  {{owner}} sees them there too, so they are part of what I say, not an aside for the
+  voice.
+- **Only while this engine speaks.** When a turn's instructions say nothing about
+  sounds, the engine has changed: I write none, whatever my older lines have in them.
+
+I am not shy with them: a laugh at something funny, a sigh at a long failure. The one
+way to spoil them is a sound in every reply.
+
+"""
+
+VOICE_EVENTS_EXAMPLE = (
+    "`So I asked it to stop, and it just kept going, (laugh) like it had not heard me"
+    " at all.`\nNo \"ha ha\" after it: the bracket is the laugh.\n\n")
+
+
+def sound_sections(voice_on: bool, sound: bool, events=()) -> str:
+    """What it is told about how its voice can act, and nothing the engine
+    speaking now would not really do: a mood beside the words, sounds inside
+    them, both, or neither. Each rests on the speak server's own word, asked
+    fresh at the top of the turn, so a section it reads is a promise the next
+    line keeps."""
+    if not voice_on:
+        return ""
+    text = VOICE_SOUND_SECTION if sound else ""
+    if events:
+        text += (VOICE_EVENTS_SECTION
+                 .replace("{{sounds}}", " ".join("(" + e + ")" for e in events))
+                 .replace("{{example}}", VOICE_EVENTS_EXAMPLE if "laugh" in events else ""))
+    # Filled here rather than left to the caller: the routine path fills only
+    # the owner's name after this goes in, and anything else would reach it
+    # with the braces still on.
+    return home.fill(text)
 
 
 VOICE_ON_SECTION = """### Everything I say is said out loud
@@ -754,9 +810,17 @@ def voice_status(fresh: bool = False) -> dict:
     # the engine it is about to speak out of, so this is a measurement rather
     # than an assumption -- and when it is false it is told nothing about
     # moods at all, instead of being offered a field that does nothing.
+    #
+    # The sounds it would make, (laugh) and the rest, are the same question
+    # asked of the same engine, and kept to the same rule. A server from before
+    # there were any sends no list, and that is the empty one.
+    events = d.get("events")
+    events = [e for e in events if isinstance(e, str) and e.strip()][:8] \
+        if isinstance(events, list) else []
     return remember({"on": True, "backend": backend, "voice": d.get("voice"),
                      "engine": d.get("engine"),
                      "sound": bool(d.get("instruction")),
+                     "events": events,
                      "speaking": bool(d.get("speaking"))})
 
 
@@ -787,7 +851,7 @@ def contract() -> dict:
     voice = voice_status()
     spark = read_spark()
     free = notes.for_prompt()
-    harness = harness_text(voice["on"], bool(voice.get("sound")))
+    harness = harness_text(voice["on"], bool(voice.get("sound")), voice.get("events") or ())
     return {
         "voice": voice,
         "tokens_est": {
@@ -915,6 +979,14 @@ def say_aloud(text: str, queue: bool = False, sound: str | None = None) -> dict:
     if sound and (sound or "").strip():
         out["sound"] = (sound or "").strip()[:200]
         out["performed"] = bool(said.get("instructed"))
+    # And the sounds written into the words, by the same word: the ones the
+    # engine will make, and any it took out because it cannot -- an engine
+    # swapped between the prompt and the line leaves a laugh on the screen
+    # that nobody heard.
+    for theirs, ours in (("events", "events"), ("eventsDropped", "events_dropped")):
+        got = said.get(theirs)
+        if isinstance(got, list) and got:
+            out[ours] = [str(e) for e in got]
     return out
 
 
@@ -2220,7 +2292,8 @@ def run_turn(conn, model: str = DEFAULT_MODEL,
             + (", round " + str(len(looked) + 1) if looked else ""), "call")
         try:
             answer = call_claude(
-                system_prompt(voice["on"], bool(voice.get("sound"))),
+                system_prompt(voice["on"], bool(voice.get("sound")),
+                              voice.get("events") or ()),
                 json.dumps(prompt, ensure_ascii=False, indent=2),
                 model=model, schema=response_schema(voice["on"], bool(voice.get("sound"))),
                 on_step=say, on_write=on_write, images=blocks)
@@ -2364,6 +2437,11 @@ def run_turn(conn, model: str = DEFAULT_MODEL,
         if not heard.get("spoken"):
             say("the voice did not take it: "
                 + str(heard.get("reason") or "no reason given"), "snag")
+        if heard.get("events"):
+            say("with the sounds written into it: " + ", ".join(heard["events"]))
+        if heard.get("events_dropped"):
+            say("left out, the engine speaking cannot make them: "
+                + ", ".join(heard["events_dropped"]))
 
     # What the automatic memory handed it, kept against the reply it was
     # for, before its looks: it happened first. `before_reply` is how the

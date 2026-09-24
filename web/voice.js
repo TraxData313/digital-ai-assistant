@@ -69,9 +69,10 @@
     else if(app.on){
       text=N+'’s voice is on'+(app.engine?', through '+app.engine:'')+'.';
       // Only worth saying when it is true, and it is the whole reason the
-      // engine is named at all: on Qwen the assistant can say how a line
-      // should land.
+      // engine is named at all: on some engines the assistant can say how a
+      // line should land, and on Breeze it can laugh in the middle of one.
       if(app.sound)text+=' '+N+' can say how it sounds.';
+      if(app.events?.length)text+=' '+N+' can make sounds too: '+app.events.map(e=>'('+e+')').join(' ')+'.';
     } else {text='Not heard: '+(app.reason||'the voice app is not answering.');warn=true;}
     controls.app.textContent=text;
     controls.app.classList.toggle('warn',warn);

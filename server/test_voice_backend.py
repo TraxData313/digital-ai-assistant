@@ -17,6 +17,9 @@ from unittest.mock import patch
 
 from . import brain
 
+# What Breeze answers when asked which sounds the next line could make.
+SOUNDS = ("laugh", "sigh", "cough", "clears throat")
+
 
 class VoiceFile(unittest.TestCase):
     def setUp(self):
@@ -96,6 +99,19 @@ class WhatSheIsTold(VoiceFile):
         self.assertTrue(said["on"])
         self.assertFalse(said["sound"])
 
+    def test_an_engine_that_laughs_says_which_sounds_it_makes(self):
+        said = self.status(self.ready(engine="breeze", events=list(SOUNDS)))
+        self.assertTrue(said["sound"])
+        self.assertEqual(said["events"], list(SOUNDS))
+
+    def test_a_server_from_before_sounds_offers_none(self):
+        # Qwen's answer has no list at all, and a list that is not one is no
+        # list either -- never a laugh made of the letters of "laugh".
+        self.assertEqual(self.status(self.ready())["events"], [])
+        self.assertEqual(self.status(self.ready(events="laugh"))["events"], [])
+        self.assertEqual(self.status(self.ready(events=["laugh", 3, " "]))["events"],
+                         ["laugh"])
+
     def test_every_refusal_still_names_the_road_it_refused_on(self):
         for served, cfg in ((None, {}), (self.ready(enabled=False), {}),
                             (self.ready(ready=False), {}), (None, {"enabled": False})):
@@ -126,6 +142,38 @@ class TheField(unittest.TestCase):
         for voice_on, sound in ((True, True), (True, False), (False, False)):
             self.assertNotIn("{{sound_section}}", brain.operation_harness(voice_on, sound))
             self.assertNotIn("{{voice_field}}", brain.operation_harness(voice_on, sound))
+        for voice_on, sound in ((True, True), (True, False), (False, True)):
+            for text in (brain.operation_harness(voice_on, sound, SOUNDS),
+                         brain.harness_text(voice_on, sound, SOUNDS)):
+                self.assertNotIn("{{", text)
+
+    def test_the_sounds_are_described_only_while_the_engine_makes_them(self):
+        # Offered on the speak server's word and on nothing else: no list, no
+        # section; voice off, no section, whatever the list says.
+        told = brain.harness_text(True, True, SOUNDS)
+        self.assertIn("Sounds, written where they happen", told)
+        self.assertIn("(laugh) (sigh) (cough) (clears throat)", told)
+        self.assertNotIn("Sounds, written where they happen", brain.harness_text(True, True))
+        self.assertNotIn("Sounds, written where they happen",
+                         brain.harness_text(False, False, SOUNDS))
+
+    def test_sounds_and_a_mood_are_offered_apart(self):
+        # An engine may have either without the other. Sounds alone never
+        # mention a field the schema does not have.
+        only_sounds = brain.sound_sections(True, False, SOUNDS)
+        self.assertIn("(sigh)", only_sounds)
+        self.assertNotIn("`sound`", only_sounds)
+        only_mood = brain.sound_sections(True, True, ())
+        self.assertIn("`sound`", only_mood)
+        self.assertNotIn("(laugh)", only_mood)
+        self.assertEqual(brain.sound_sections(False, True, SOUNDS), "")
+
+    def test_the_laugh_example_comes_only_with_a_laugh(self):
+        self.assertIn("ha ha", brain.sound_sections(True, False, SOUNDS))
+        sighs = brain.sound_sections(True, False, ("sigh",))
+        self.assertIn("(sigh)", sighs)
+        self.assertNotIn("ha ha", sighs)
+        self.assertNotIn("(laugh)", sighs)
 
 
 class SendingItOn(VoiceFile):
@@ -157,6 +205,21 @@ class SendingItOn(VoiceFile):
         self.assertEqual(sent["body"]["instruction"], "")
         self.assertNotIn("sound", heard)
         self.assertNotIn("performed", heard)
+        self.assertNotIn("events", heard)
+        self.assertNotIn("events_dropped", heard)
+
+    def test_the_sounds_are_reported_as_the_server_counted_them(self):
+        # The laugh rides inside the words, untouched; what came of it is the
+        # server's word, including the one an engine swapped mid-turn dropped.
+        heard, sent = self.spoke({"events": ["laugh"], "eventsDropped": ["cough"]})
+        self.assertEqual(sent["body"]["text"], "Hello")
+        self.assertEqual(heard["events"], ["laugh"])
+        self.assertEqual(heard["events_dropped"], ["cough"])
+
+    def test_a_count_that_is_not_a_list_is_not_reported(self):
+        heard, _ = self.spoke({"events": "laugh", "eventsDropped": None})
+        self.assertNotIn("events", heard)
+        self.assertNotIn("events_dropped", heard)
 
     def test_the_other_road_never_reaches_the_speak_server(self):
         brain.write_voice(backend="openai")

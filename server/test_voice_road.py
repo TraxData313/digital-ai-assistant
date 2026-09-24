@@ -183,6 +183,31 @@ def main():
               reading["on"] and not reading["sound"], reading)
         check("and then the field is not in the contract either",
               "sound" not in brain.response_schema(reading["on"], reading["sound"])["properties"])
+        check("nor any sounds, with none on the list",
+              reading["events"] == [], reading)
+
+        # -- and what it may do inside the words --------------------------
+        served["state"] = {"enabled": True, "ready": True, "voice": "default",
+                           "engine": "breeze", "instruction": True,
+                           "events": ["laugh", "sigh", "cough", "clears throat"]}
+        # One fresh reading, then everything after it answers off that one --
+        # the contract and the page both, as a turn and its window do.
+        with patch("urllib.request.urlopen", side_effect=fake_open):
+            brain.voice_status(fresh=True)
+            said = brain.contract()
+        check("an engine that laughs is offered a mood and its sounds",
+              said["voice"]["sound"] and said["voice"]["events"] == [
+                  "laugh", "sigh", "cough", "clears throat"], said["voice"])
+        check("and its instructions name every one of them, in brackets",
+              "(laugh) (sigh) (cough) (clears throat)" in said["harness"])
+        check("while the contract grows no field for them: they ride in the words",
+              set(said["answers_with"]["properties"]) - {"sound"}
+              == set(brain.response_schema(True, False)["properties"]),
+              sorted(said["answers_with"]["properties"]))
+        code, said = voice(port, "/api/voice")
+        check("the page is told the same list the prompt was",
+              code == 200 and said["local"].get("events") == [
+                  "laugh", "sigh", "cough", "clears throat"], said.get("local"))
     finally:
         room.shutdown()
 

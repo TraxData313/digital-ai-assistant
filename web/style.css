@@ -1304,6 +1304,9 @@ a.res-val:hover { color: var(--ink); }
    wording, in the orange the room keeps for its own marks, small enough to
    be an aside. */
 .msg .sound { margin-top:6px; font-size:12.5px; font-style:italic; line-height:1.45; color:var(--ember); opacity:.92; overflow-wrap:anywhere; }
+/* A sound its voice made where it was written, "(laugh)", in the same orange,
+   inside the words rather than under them. */
+.sfx { font-style:italic; color:var(--ember); opacity:.92; white-space:nowrap; }
 #voice-status.error { color:var(--bad); }
 #voice-status.voice-quiet { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
 #voice-audio[hidden], .voice-popover [hidden] { display:none; }

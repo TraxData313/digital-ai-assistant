@@ -137,6 +137,12 @@ def run():
         # that is down says why rather than claiming the assistant was heard.
         room['local']={'on':True,'backend':'local','voice':'default','engine':'pocket','sound':False}
         load();assert 'how it sounds' not in page.locator('#voice-app').inner_text()
+        assert 'make sounds' not in page.locator('#voice-app').inner_text()
+        # An engine that laughs says so, with each sound as it is written.
+        room['local']={'on':True,'backend':'local','voice':'default','engine':'breeze','sound':True,
+                       'events':['laugh','sigh','cough','clears throat']}
+        load();said=page.locator('#voice-app').inner_text()
+        assert 'how it sounds' in said and '(laugh) (sigh) (cough) (clears throat)' in said,said
         room['local']={'on':False,'backend':'local','reason':'speak server not answering (URLError)'}
         load();assert 'not answering' in page.locator('#voice-app').inner_text()
         assert 'warn' in page.locator('#voice-app').get_attribute('class')
