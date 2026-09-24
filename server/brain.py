@@ -1260,7 +1260,7 @@ def build_prompt(conn, voice_on: bool = False, found=None, woken=None,
     is the round it is still standing in.
 
     `suggested` is what the automatic memory handed it before it spoke --
-    its query and a few titles -- or None, in which case the key is not there
+    what it searched for, what came back and its note on each -- or None, in which case the key is not there
     at all and the turn is exactly what it was before that existed.
 
     `rows` is its working set, when the caller has already read it. The turn
@@ -2149,7 +2149,7 @@ def run_turn(conn, model: str = DEFAULT_MODEL,
     rounds = []
 
     # The automatic memory, if the owner has one switched on: a small local model
-    # reads the last few lines and hands it a query and a few titles it did
+    # reads the last few lines, searches, and hands it what it found and did
     # not ask for. Once per turn, before it first call -- it reads the room,
     # and the room does not change while it looks. Under a hard deadline: a
     # miss is said and the turn goes on. With none chosen this is None and

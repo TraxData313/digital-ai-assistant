@@ -358,6 +358,30 @@ details.act > summary { cursor: pointer; }
 .act-body .prose { white-space: pre-wrap; color: var(--ink); }
 .act-body .bad { color: var(--bad); }
 
+/* The automatic memory's fold: what it asked, what came back, the reviewer's
+   want on each as a small coloured badge. */
+.act-body.rc { white-space: normal; }
+.rc .rc-facts { color: var(--faint); font-size: 13.5px; }
+.rc .rc-asked { display: flex; flex-direction: column; gap: 2px; color: var(--ink); }
+.rc .rc-asked b { color: var(--dim); font-weight: 600; margin-right: 6px; }
+.rc .rc-row { display: flex; gap: 10px; align-items: flex-start; margin: 7px 0; }
+.rc .rc-want {
+  flex: none; width: 44px; text-align: center; border-radius: 4px; padding: 1px 0;
+  font-size: 13.5px; font-variant-numeric: tabular-nums; font-weight: 600;
+}
+.rc .rc-want.hi { background: rgba(125,223,180,.22); color: var(--mint); }
+.rc .rc-want.mid { background: rgba(236,193,78,.18); color: var(--essence); }
+.rc .rc-want.lo { background: rgba(179,169,159,.12); color: var(--faint); }
+.rc .rc-want.none { background: none; }
+.rc .rc-main { min-width: 0; }
+.rc .rc-name { color: var(--ink); }
+.rc .rc-id { color: var(--faint); font-variant-numeric: tabular-nums; }
+.rc .rc-note { font-style: italic; }
+.rc .recall-more { margin: 6px 0 2px 54px; padding: 1px 8px; }
+.rc .rc-raw { margin-top: 8px; }
+.rc .rc-raw > summary { cursor: pointer; color: var(--faint); font-size: 13.5px; }
+.rc .rc-raw pre { white-space: pre-wrap; font-size: 13px; margin: 6px 0 0; }
+
 /* An essence: its name on the front, the whole of it on a click. Ember --
    it is the assistant's, whoever is holding the device. */
 .ess {

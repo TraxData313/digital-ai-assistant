@@ -170,7 +170,7 @@ assistant has no way to read them back.
 
 ## What a home can change
 
-Everything in `server/*.md` and `server/recall_config.py` can be overridden
+Everything in `server/*.md` and `server/recall_prompts.py` can be overridden
 by a file of the same name in the home's `prompts/`. The code's copies name nobody; `{{name}}`, `{{owner}}` and
 friends are filled from `identity.json`. Pictures work the same way from the
 home's `artwork/` (`icon.ico`, `icon-down.ico`, `portrait.png`,

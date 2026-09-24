@@ -574,57 +574,134 @@ function stepText(s) {
   return JSON.stringify(d, null, 2);
 }
 
-// What the automatic memory asked and what came back. Suggestions, said so:
-// the titles are names the assistant may take down, not things it remembers.
-function tookText(d) {
+// The automatic memory, drawn from the very block the assistant was handed:
+// what the small model asked for, what came back with its likeness score, and
+// the reviewer's note and want on each. The text form and the html form carry
+// the same content; the raw block is one fold further down.
+const RECALL_MORE = new Map();    // fold key -> {skip, total, results, error}
+const RECALL_ASKED = new Map();   // fold key -> {asked, shown: [ids]}
+
+function recallTook(d) {
   if (d.took_s == null) return "";
   const parts = [];
-  if (d.model_s != null) parts.push("model " + Number(d.model_s).toFixed(2));
-  if (d.search_s != null) parts.push("search " + Number(d.search_s).toFixed(2));
-  if (d.read_s != null) parts.push("read " + Number(d.read_s).toFixed(2));
-  return Number(d.took_s).toFixed(2) + " s" + (parts.length ? " (" + parts.join(", ") + ")" : "");
+  if (d.write_s != null) parts.push("write " + Number(d.write_s).toFixed(1));
+  if (d.search_s != null) parts.push("search " + Number(d.search_s).toFixed(1));
+  if (d.review_s != null) parts.push("review " + Number(d.review_s).toFixed(1));
+  return Number(d.took_s).toFixed(1) + " s" + (parts.length ? " (" + parts.join(" \u00b7 ") + ")" : "");
+}
+
+function recallHead(d) {
+  return [d.model, d.read_lines ? "read the last " + d.read_lines + " lines" : "",
+          recallTook(d)].filter(Boolean).join(" \u00b7 ");
+}
+
+function recallKeywords(d) {
+  const a = d.asked || {}, counts = d.keyword_counts || {};
+  return (a.keywords || []).map((k) => {
+    const c = counts[k];
+    if (!c) return k;
+    return k + " (in " + c.in + (c.too_common ? ", too common, not used" : "") + ")";
+  });
+}
+
+function recallDates(a) {
+  if (!a.from && !a.to) return "any";
+  return (a.from || "the beginning") + " \u2192 " + (a.to || "now");
+}
+
+function recallFacts(r) {
+  return [r.date, r.score != null ? "likeness " + Number(r.score).toFixed(3) : "",
+    r.found_by === "keyword" ? "found by keyword" : "",
+    (r.keywords_in_it || []).length ? "has: " + r.keywords_in_it.join(", ") : "",
+    r.in_hand ? "already in hand" : ""].filter(Boolean).join(" \u00b7 ");
 }
 
 function recallText(d) {
-  const out = [];
-  const who = "by " + (d.by || d.asked_for || "?") +
-    (d.answered_by ? (d.answered_by === d.asked_for ? " (" + d.answered_by + ")" : " — answered by " + d.answered_by) : "");
-  out.push(who + (d.took_s != null ? " \u00b7 " + tookText(d) : "") +
-    (d.read ? " \u00b7 read the last " + d.read + " lines" : ""));
-  if (d.about) out.push("about: " + d.about);
-  if (d.query) out.push("searched for: " + d.query);
-  if (d.keywords && d.keywords.length) out.push("keywords: " + d.keywords.join(", "));
-  if (d.note) out.push("note: " + d.note);
-  const t = d.titles || [];
-  if (t.length) {
-    out.push("", "titles \u2014 suggestions, " + MY_NAME + " decides:");
-    for (const h of t) {
-      out.push("  #" + h.id + "  " + (h.title || "(untitled)") + "  \u00b7 " + shortWhen(h.date) +
-        (h.score != null ? "  \u00b7 " + Number(h.score).toFixed(3) : "") +
-        (h.under_bar ? "  \u00b7 from under the bar, read and ticked related" : "") +
-        (h.in_hand ? "  \u00b7 already in hand" : ""));
-      if (h.first) out.push("      its first words: " + h.first);
-      if (h.why) out.push("      the reader \u2014 its words, not " + MY_NAME + "'s: " + h.why);
-    }
-    if (d.set_aside && d.set_aside.length) {
-      out.push("  read and set aside: " +
-        d.set_aside.map((a) => "#" + a.id + " " + (a.title || "(untitled)") +
-          (a.because ? " \u2014 " + a.because : "")).join(" \u00b7 "));
-    }
-    if (d.held_back) out.push("  +" + d.held_back + " more cleared the floor and were not shown" +
-      (d.held_back_best != null ? ", the best of them " + Number(d.held_back_best).toFixed(3) : ""));
-  } else if (d.query) {
-    // The bar that was actually used: the live version's own when it
-    // carried one, else the knob.
-    const bar = d.bar != null ? d.bar
-      : (d.settings && d.settings.suggest_floor != null) ? d.settings.suggest_floor
-      : ((d.settings && d.settings.floor) || d.floor);
-    out.push("nothing on the shelf came over the bar of " + bar +
-      (d.best_score_seen != null ? " (best " + Number(d.best_score_seen).toFixed(3) + ")" : "") +
-      " \u2014 the shelf was quiet for that question");
+  const out = [recallHead(d)];
+  const a = d.asked;
+  if (a) {
+    out.push("", "It searched for:",
+      "  essence: " + (a.essence || "(none)"),
+      "  keywords: " + (recallKeywords(d).join(", ") || "(none)"),
+      "  dates: " + recallDates(a));
   }
+  const res = d.results || [];
+  if (res.length) {
+    out.push("", "What came back" + (d.searched != null ? " (of " + d.searched + " essences)" : "") + ":");
+    for (const r of res) {
+      out.push("  " + (r.want != null ? r.want + "%  " : "") + "#" + r.id + "  " + r.name,
+               "      " + recallFacts(r));
+      if (r.note) out.push("      " + r.note);
+    }
+  } else if (a) out.push("", "Nothing came back.");
+  for (const n of d.notes || []) out.push("note: " + n);
   if (d.missed) out.push("missed: " + d.missed);
   return out.join("\n");
+}
+
+function wantClass(w) { return w == null ? "none" : w >= 70 ? "hi" : w >= 30 ? "mid" : "lo"; }
+
+function recallRowHtml(r, reviewed) {
+  const want = reviewed
+    ? `<span class="rc-want ${wantClass(r.want)}" title="how much the reviewer thinks ${esc(MY_NAME)} would want to read it">${r.want == null ? "\u2013" : r.want + "%"}</span>`
+    : `<span class="rc-want none"></span>`;
+  return `<div class="rc-row">${want}<div class="rc-main">` +
+    `<div class="rc-name"><span class="rc-id">#${esc(r.id)}</span> ${esc(r.name)}</div>` +
+    `<div class="rc-facts">${esc(recallFacts(r))}</div>` +
+    (r.note ? `<div class="rc-note">${esc(r.note)}</div>` : "") + `</div></div>`;
+}
+
+function recallHtml(d, key) {
+  const a = d.asked;
+  const res = d.results || [];
+  let h = `<div class="act-body rc"><div class="rc-facts">${esc(recallHead(d))}</div>`;
+  if (a) {
+    h += `<div class="cap">It searched for</div><div class="rc-asked">` +
+      `<div><b>essence</b> \u201c${esc(a.essence || "")}\u201d</div>` +
+      `<div><b>keywords</b> ${esc(recallKeywords(d).join(", ") || "none")}</div>` +
+      `<div><b>dates</b> ${esc(recallDates(a))}</div></div>`;
+    h += `<div class="cap">What came back${d.searched != null ? " \u2014 of " + d.searched + " essences" : ""}</div>`;
+  }
+  h += res.map((r) => recallRowHtml(r, true)).join("");
+  if (a && !res.length) h += `<div class="rc-facts">nothing came back</div>`;
+  for (const n of d.notes || []) h += `<div class="rc-facts">note: ${esc(n)}</div>`;
+  if (d.missed) h += `<div class="bad">missed: ${esc(d.missed)}</div>`;
+  const more = RECALL_MORE.get(key);
+  if (more && more.results.length) {
+    h += `<div class="cap">Further down, by likeness only \u2014 not reviewed</div>` +
+      more.results.map((r) => recallRowHtml(r, false)).join("");
+  }
+  if (more && more.error) h += `<div class="bad">${esc(more.error)}</div>`;
+  if (a && a.essence) {
+    RECALL_ASKED.set(key, { asked: a, shown: res.map((r) => r.id),
+                            skip: res.filter((r) => r.found_by === "likeness").length });
+    const done = more && more.total != null && more.skip >= more.total;
+    if (!done) h += `<button class="small-btn recall-more" data-rk="${esc(key)}">show 10 more</button>`;
+  }
+  const raw = Object.assign({}, d);
+  delete raw.before_reply;
+  delete raw.late;
+  h += `<details class="rc-raw" data-k="${esc(key)}:raw"${OPEN.has(key + ":raw") ? " open" : ""}>` +
+    `<summary>exactly what ${esc(MY_NAME)} was handed</summary>` +
+    `<pre>${esc(JSON.stringify(raw, null, 2))}</pre></details>`;
+  return h + `</div>`;
+}
+
+async function recallMore(key, btn) {
+  const got = RECALL_ASKED.get(key);
+  if (!got) return;
+  const prev = RECALL_MORE.get(key) || { skip: got.skip, total: null, results: [] };
+  btn.disabled = true;
+  btn.textContent = "looking\u2026";
+  try {
+    const out = await post("api/recall/more", { asked: got.asked, skip: prev.skip });
+    const seen = new Set(got.shown.concat(prev.results.map((r) => r.id)));
+    RECALL_MORE.set(key, { skip: prev.skip + out.results.length, total: out.total,
+      results: prev.results.concat(out.results.filter((r) => !seen.has(r.id))) });
+  } catch (err) {
+    RECALL_MORE.set(key, Object.assign({}, prev, { error: String(err.message || err) }));
+  }
+  render();
 }
 
 // What the digest organ did to one report: stood in, or missed out loud.
@@ -791,6 +868,7 @@ function actFromEvent(e, grey) {
   const mono = e.kind === "files" || e.kind === "shelf" || e.kind === "native";
   const download = e.kind === "native" && e.detail && Number.isInteger(e.detail.request_row)
     ? `<a href="api/native-log?row=${e.detail.request_row}" download="native-turn-${e.detail.request_row}.json">Download run log</a>` : "";
+  if (e.kind === "recall" && e.detail) return actHtml("ev:" + e.id, cls, label, text, recallHtml(e.detail, "ev:" + e.id), grey);
   return actHtml("ev:" + e.id, cls, label, text, body(eventDetail(e), mono) + download, grey);
 }
 
@@ -1311,6 +1389,7 @@ function liveStep(s, key, afterReply) {
   if (s.detail && LIVE_LABEL[s.kind]) {
     const [label, cls] = LIVE_LABEL[s.kind];
     const mono = s.kind === "files" || s.kind === "shelf" || s.kind === "native";
+    if (s.kind === "recall") return actHtml(key, cls, label, tidySummary(s.text), recallHtml(s.detail, key));
     return actHtml(key, cls, label, tidySummary(s.text),
                    body(stepText(s), mono));
   }
@@ -1876,14 +1955,6 @@ function devRecall() {
   let html = `<p class="recall-row"><label>model <select id="recall-model">${opts.join("")}</select></label>` +
     `<span class="state ${line.cls}">${esc(line.text.replace(/^automatic memory: /, ""))}</span> ${action}</p>` + bar;
   if (rc.detail) html += `<p class="quiet">${esc(rc.detail)}</p>`;
-  // The query writer: the model above unless another is chosen here;
-  // the reader and the digest stay on the model whatever is chosen.
-  const wopts = [`<option value=""${!rc.writer ? " selected" : ""}>same as the model</option>`].concat(
-    (rc.writers || []).filter((w) => w.key !== rc.model).map((w) =>
-      `<option value="${esc(w.key)}"${rc.writer === w.key ? " selected" : ""}>${esc(w.label)}</option>`));
-  const wstate = rc.writer ? (rc.writer_phase || "") + (rc.writer_detail ? " — " + rc.writer_detail : "") : "";
-  html += `<p class="recall-row"><label>query writer <select id="recall-writer">${wopts.join("")}</select></label>` +
-    (wstate ? `<span class="state">${esc(wstate)}</span>` : `<span class="quiet">the model writes the query, as it always has; the reader stays on the model whatever is chosen here</span>`) + `</p>`;
   const kn = rc.knobs || {}, kb = rc.knob_bounds || {};
   const knob = (name, label, step, title) => {
     const b = kb[name] || {};
@@ -1892,41 +1963,34 @@ function devRecall() {
       `value="${kn[name] != null ? kn[name] : ""}"></label>`;
   };
   html += `<p class="recall-row knobs">` +
-    knob("timeout_s", "hard limit, s", "0.5", "a turn never waits longer than this for it; when it misses, the turn goes ahead without it") +
-    knob("lines", "lines read", "1", "how many of the last lines of the room it reads") +
-    knob("line_tokens", "tokens per line", "10", "how long a line may be. The subject line gets this whole and keeps both its ends; the others get a third and keep their end") +
-    knob("titles_min", "titles at least", "1", "this many are shown whenever that many clear the floor") +
-    knob("titles_max", "at most", "1", "never more than this") +
-    knob("gap", "gap", "0.01", "past the minimum, a title is shown only if its score is within this of the best one: the top cluster is shown, the tail is not") +
-    knob("suggest_floor", "suggest bar", "0.01", "what a meaning hit must score to be suggested at all; under it a turn shows nothing rather than the nearest thing to hand. The search's own floor stays put for deliberate searches, and literal keyword finds keep their seats regardless") +
-    knob("read_top", "read top", "1", "how many of the shown titles the model then reads, leaving one sentence why each might matter — its words, labelled as such; 0 turns the reader off") +
-    knob("read_tokens", "read tokens", "50", "how much of each read essence the model sees, from the top") +
+    knob("timeout_s", "hard limit, s", "1", "a turn never waits longer than this for it; when it misses, the turn goes ahead without it") +
+    knob("lines", "lines read", "1", "how many of the last lines of the room the writer reads") +
+    knob("top", "top by likeness", "1", "how many of the closest essences are shown and reviewed") +
+    knob("keyword_top", "keyword finds", "1", "how many essences found by keyword are added, when they are not already among the top") +
+    knob("read_chars", "reviewer reads, chars", "100", "how much of each result the reviewer reads, from the top") +
     `<button class="small-btn" id="recall-knobs-set">set</button>` +
-    `<button class="small-btn" id="recall-knobs-reset" title="back to DEFAULTS in server/recall_config.py">defaults</button>` +
-    `<span class="quiet">floor ${rc.floor != null ? rc.floor : "?"} is the search's own. Every knob is shown to ${esc(MY_NAME)} each turn; it can ask, you turn.</span></p>`;
+    `<button class="small-btn" id="recall-knobs-reset" title="back to the defaults">defaults</button></p>`;
   html += `<p class="recall-row"><button class="btn" id="recall-try"${rc.model && rc.phase === "loaded" ? "" : " disabled"}>ask it now</button>` +
     `<span class="quiet" id="recall-try-note">runs it on the room as it stands \u2014 shown here, kept nowhere</span></p>`;
   const last = rc.last;
   if (last) {
-    const when = last.at ? shortWhen(new Date(last.at * 1000).toISOString()) : "";
-    const late = last.late ? " \u00b7 late \u2014 finished after the limit" : "";
-    const stats = last.stats ? Object.entries(last.stats).filter(([, v]) => v != null)
-      .map(([k, v]) => k + " " + (typeof v === "number" ? (Number.isInteger(v) ? v : v.toFixed(2)) : v)).join(" \u00b7 ") : "";
-    html += `<div class="quiet" style="margin-top:8px">last run${when ? " \u00b7 " + when : ""}${late}</div>` +
-      `<pre id="recall-last">${esc(recallText(last))}${stats ? "\n\n" + esc(stats) : ""}` +
-      (last.first ? "\n\nits first answer, sent back: " + esc(last.first) : "") + `</pre>`;
-    if (last.sent) {
-      html += fold("dev:recall-sent", "tool", "what it was sent", "the lines, as cut, with the ask at the end", "",
-        `<pre>${esc(last.sent)}</pre>`);
+    html += `<div class="quiet" style="margin-top:8px">last run${last.late ? " \u00b7 late \u2014 finished after the limit, so " + esc(MY_NAME) + " did not get it" : ""}</div>` +
+      recallHtml(last, "dev:recall-last");
+    const sent = rc.last_sent || {};
+    const calls = [["write", sent.write], ["review", sent.review]].filter(([, m]) => m && m.length);
+    if (calls.length) {
+      const text = calls.map(([name, msgs]) => "=== " + name + " ===\n\n" +
+        msgs.map((m) => "[" + m.role + "]\n" + m.content).join("\n\n")).join("\n\n\n");
+      html += fold("dev:recall-sent", "tool", "what the model was sent", "both calls, whole", "",
+        `<pre>${esc(text)}</pre>`);
     }
   }
   html += facts([
-    ["how it works", `reads the last ${rc.lines || 4} lines of the room, writes a search in the shape of an essence \u2014 one per thing the line names, three at most \u2014 runs them over the shelf, and hands ${MY_NAME} the queries and up to ${rc.titles || 4} titles \u2014 never text. It suggests; ${MY_NAME} decides.`],
+    ["how it works", `before each turn: the model looks at a few of ${MY_NAME}'s essences for their style and the last ${kn.lines || 5} lines of the room, and writes an essence-shaped search, keywords and maybe dates. The search returns the top ${kn.top || 3} by likeness and up to ${kn.keyword_top != null ? kn.keyword_top : 2} keyword finds. The model reviews each: a note and how much ${MY_NAME} would want to read it. ${MY_NAME} gets exactly what the fold in the room shows.`],
     ["hosted by", rc.server ? "LM Studio at " + rc.server + " \u2014 the room loads and frees the model, LM Studio runs it" : ""],
     ["model key", rc.model || ""],
-    ["answered by, last run", rc.last && rc.last.answered_by ? rc.last.answered_by : ""],
     ["embedder", rc.embedder === "warm" ? "warm" : rc.embedder === "warming" ? "warming up (about 13 s the first time)"
-      : rc.embedder === "unavailable" ? "unavailable \u2014 the meaning arm cannot run" : "cold \u2014 warms when a model is chosen"],
+      : rc.embedder === "unavailable" ? "unavailable \u2014 the search cannot run" : "cold \u2014 warms when a model is chosen"],
   ]);
   return html;
 }
@@ -1936,7 +2000,7 @@ function devRecall() {
 // scroll and selection mid-read.
 function devRecallConfig() {
   const rc = (progress && progress.recall) || {};
-  return fold("dev:recall-config", "tool", "what it is told", (rc.config_path || "server/recall_config.py") +
+  return fold("dev:recall-config", "tool", "what it is told", (rc.config_path || "server/recall_prompts.py") +
     " \u2014 edit the file; it is read fresh on every run", "",
     (rc.config_error ? `<p class="bad">the file could not be read, so the built-in words are used: ${esc(rc.config_error)}</p>` : "") +
     `<pre>${esc(rc.config_text || "")}</pre>`);
@@ -1971,15 +2035,6 @@ function wireRecall() {
       if (progress) progress.recall = got;
     } catch (e) { alert(e.message); }
     sel.blur();
-    renderRecall(); paintRecall();
-  };
-  const wsel = $("recall-writer");
-  if (wsel) wsel.onchange = async () => {
-    try {
-      const got = await post("api/recall/writer", { writer: wsel.value || null });
-      if (progress) progress.recall = got;
-    } catch (e) { alert(e.message); }
-    wsel.blur();
     renderRecall(); paintRecall();
   };
   const set = $("recall-knobs-set");
@@ -4379,6 +4434,11 @@ MAIN.addEventListener("toggle", (e) => {
   if (!kk) return;
   if (e.target.open) OPEN.add(kk); else OPEN.delete(kk);
 }, true);
+
+MAIN.addEventListener("click", (e) => {
+  const b = e.target.closest(".recall-more");
+  if (b) { e.preventDefault(); recallMore(b.dataset.rk, b); }
+});
 
 MAIN.addEventListener("click", async (e) => {
   // A project row opens and shuts on the row itself, not on a button: the
