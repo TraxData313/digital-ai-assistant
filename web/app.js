@@ -611,7 +611,6 @@ function recallDates(a) {
 
 function recallFacts(r) {
   return [r.date, r.score != null ? "likeness " + Number(r.score).toFixed(3) : "",
-    r.found_by === "keyword" ? "found by keyword" : "",
     (r.keywords_in_it || []).length ? "has: " + r.keywords_in_it.join(", ") : "",
     r.in_hand ? "already in hand" : ""].filter(Boolean).join(" \u00b7 ");
 }
@@ -629,6 +628,9 @@ function recallText(d) {
   if (res.length) {
     out.push("", "What came back" + (d.searched != null ? " (of " + d.searched + " essences)" : "") + ":");
     for (const r of res) {
+      if (r.found_by === "keyword" && r === res.find((x) => x.found_by === "keyword")) {
+        out.push("", "Found by keyword, not already above:");
+      }
       out.push("  " + (r.want != null ? r.want + "%  " : "") + "#" + r.id + "  " + r.name,
                "      " + recallFacts(r));
       if (r.note) out.push("      " + r.note);
@@ -652,6 +654,13 @@ function recallRowHtml(r, reviewed) {
 }
 
 function recallHtml(d, key) {
+  if (!d.asked && d.query !== undefined) {
+    // A run of the earlier, more complicated automatic memory, kept as it was.
+    return `<div class="act-body rc"><div class="rc-facts">an earlier version of the automatic memory</div>` +
+      (d.query ? `<div class="rc-asked"><div><b>searched for</b> “${esc(d.query)}”</div></div>` : "") +
+      (d.missed ? `<div class="bad">missed: ${esc(d.missed)}</div>` : "") +
+      `<pre>${esc(JSON.stringify(d, null, 2))}</pre></div>`;
+  }
   const a = d.asked;
   const res = d.results || [];
   let h = `<div class="act-body rc"><div class="rc-facts">${esc(recallHead(d))}</div>`;
@@ -662,7 +671,12 @@ function recallHtml(d, key) {
       `<div><b>dates</b> ${esc(recallDates(a))}</div></div>`;
     h += `<div class="cap">What came back${d.searched != null ? " \u2014 of " + d.searched + " essences" : ""}</div>`;
   }
-  h += res.map((r) => recallRowHtml(r, true)).join("");
+  const byKw = res.filter((r) => r.found_by === "keyword");
+  h += res.filter((r) => r.found_by !== "keyword").map((r) => recallRowHtml(r, true)).join("");
+  if (byKw.length) {
+    h += `<div class="cap">Found by keyword, not already above</div>` +
+      byKw.map((r) => recallRowHtml(r, true)).join("");
+  }
   if (a && !res.length) h += `<div class="rc-facts">nothing came back</div>`;
   for (const n of d.notes || []) h += `<div class="rc-facts">note: ${esc(n)}</div>`;
   if (d.missed) h += `<div class="bad">missed: ${esc(d.missed)}</div>`;
