@@ -262,6 +262,16 @@ MODELS = [
      "about": "OpenAI's most capable model through your ChatGPT subscription. "
               "Requires codex login.",
      "price_key": "openai/gpt-6-astra"},
+    {"key": "codex/gpt-6-sol", "service": "codex",
+     "id": "gpt-6-sol", "label": "GPT-6 Sol (subscription)",
+     "about": "The everyday workhorse through your ChatGPT subscription. "
+              "Requires codex login.",
+     "price_key": "openai/gpt-6-sol"},
+    {"key": "codex/gpt-6-luna", "service": "codex",
+     "id": "gpt-6-luna", "label": "GPT-6 Luna (subscription)",
+     "about": "Fast and light through your ChatGPT subscription, for easier "
+              "work. Requires codex login.",
+     "price_key": "openai/gpt-6-luna"},
     {"key": "codex/gpt-5.6-sol", "service": "codex",
      "id": "gpt-5.6-sol", "label": "Sol (subscription)",
      "about": "Sol through your ChatGPT subscription. Requires codex login.",
