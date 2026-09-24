@@ -2861,6 +2861,10 @@ function paintProviders() {
 let NB_SORT = { key: "id", dir: 1 };
 const NB_OPEN = new Set();
 let NB_GONE = false;
+// What the cap box last said -- "saved", or why not -- and the one save in
+// flight, so Enter, a click away and the button never send it twice.
+let NB_SAYS = null;
+let NB_SAVING = false;
 
 // Key, heading, and which way a first click sorts: the numbers most-first,
 // the id and the words in their own order.
@@ -2919,19 +2923,27 @@ function devNotebook() {
   const pct = nb.pct || 0;
   const tone = nb.locked ? " over" : pct >= 80 ? " near" : "";
   const mine = (state.who || OWNER) === OWNER;
+  // A number typed and not yet saved is kept through every redraw -- the
+  // table and the meter go on answering the room -- and wears ember until it
+  // is saved, so it can never pass for the cap the room is using.
+  const draft = mine ? nbDraft() : null;
+  const says = NB_SAYS && (NB_SAYS.bad ? draft !== null : Date.now() < NB_SAYS.until) ? NB_SAYS : null;
   let html = `<div class="nb-top"><div class="nb-usage${tone}">` +
     `<div class="nb-figs"><span><b>~${(nb.used || 0).toLocaleString()}</b> of ${(nb.cap || 0).toLocaleString()} tokens</span>` +
     `<span class="nb-pct">${nb.locked ? `<span class="pill bad">full — adding locked</span> ` : ""}${pct}%</span></div>` +
     `<div class="nb-bar" role="meter" aria-label="how full the notebook is" aria-valuemin="0"` +
     ` aria-valuemax="${nb.cap}" aria-valuenow="${nb.used}"><i style="width:${Math.min(100, pct)}%"></i></div></div>` +
     `<div class="nb-cap"><label for="nb-cap">cap</label>` +
-    `<input id="nb-cap" type="number" inputmode="numeric" min="${nb.min_cap}" max="${nb.max_cap}" step="100"` +
-    ` value="${nb.cap}" data-saved="${nb.cap}"${mine ? "" : ` disabled title="${esc(PEOPLE[OWNER] || OWNER)}'s to move"`}>` +
+    `<input id="nb-cap" type="text" inputmode="numeric" autocomplete="off" spellcheck="false"` +
+    `${draft !== null ? ` class="draft"` : ""} value="${esc(draft !== null ? draft : String(nb.cap))}"` +
+    ` data-saved="${nb.cap}"${mine ? ` title="${nb.min_cap.toLocaleString()}–${nb.max_cap.toLocaleString()} tokens; Enter saves, Esc puts it back"`
+      : ` disabled title="${esc(PEOPLE[OWNER] || OWNER)}'s to move"`}>` +
     `<span class="quiet">tokens</span>` +
-    (mine ? `<button class="small-btn" id="nb-cap-save" disabled>save</button>` : "") +
+    (mine ? `<button class="small-btn nb-save" id="nb-cap-save" type="button"${draft !== null ? "" : " hidden"}>save</button>` : "") +
     `</div></div>`;
-  html += `<p class="nb-rule" id="nb-cap-note">A note may go ${nb.grace_pct}% past the cap; past it, adding locks ` +
-    `until ${esc(MY_NAME)} removes notes or the cap is raised.</p>`;
+  html += `<p class="nb-rule${says ? (says.bad ? " bad" : " good") : ""}" id="nb-cap-note">` + (says ? esc(says.text)
+    : `A note may go ${nb.grace_pct}% past the cap; past it, adding locks until ${esc(MY_NAME)} removes notes or the cap is raised.`) +
+    `</p>`;
 
   const notes = (nb.notes || []).filter((n) => NB_GONE || !n.gone);
   if (!notes.length) {
@@ -2957,10 +2969,13 @@ function devNotebook() {
   return html;
 }
 
-// The cap box stands still while it holds a number not yet saved.
-function nbBusy() {
+// The number in the cap box when it is not the cap the room is using, else
+// null. Read off the box itself, so a redraw can put it back.
+function nbDraft() {
   const el = $("nb-cap");
-  return !!el && String(el.value) !== String(el.dataset.saved || "");
+  if (!el) return null;
+  const typed = String(el.value).trim();
+  return typed !== String(el.dataset.saved || "") ? typed : null;
 }
 
 // Only this section, off its own clicks: the rest of Settings keeps still,
@@ -2999,26 +3014,43 @@ function wireNotebook() {
   }
   const gone = $("nb-gone");
   if (gone) gone.onchange = () => { NB_GONE = gone.checked; paintNotebook(); };
-  const inp = $("nb-cap"), save = $("nb-cap-save"), note = $("nb-cap-note");
+  const inp = $("nb-cap"), save = $("nb-cap-save");
   if (!inp || !save) return;
-  inp.oninput = () => { save.disabled = !nbBusy(); };
-  inp.onkeydown = (e) => {
-    if (e.key === "Enter" && !save.disabled) save.click();
-    if (e.key === "Escape") { inp.value = inp.dataset.saved; save.disabled = true; inp.blur(); }
-  };
-  save.onclick = async () => {
-    save.disabled = true;
+  // Saved the moment it is meant: Enter, a click anywhere else, or the
+  // button. A number typed and walked away from used to sit in the box
+  // looking saved while the room went on using the old cap.
+  const commit = async () => {
+    const typed = nbDraft();
+    if (NB_SAVING || typed === null || (NB_SAYS && NB_SAYS.bad && NB_SAYS.tried === typed)) return;
+    NB_SAVING = true;
     try {
-      const got = await post("api/notebook", { cap: inp.value });
+      const got = await post("api/notebook", { cap: typed });
       if (state) state.notebook = got;
+      inp.dataset.saved = inp.value = String(got.cap);
+      NB_SAYS = { text: "Saved — the cap is now " + got.cap.toLocaleString() + " tokens.",
+                  until: Date.now() + 4000 };
+      setTimeout(paintNotebook, 4100);
     } catch (e) {
-      if (note) { note.textContent = String(e.message || e); note.classList.add("bad"); }
-      save.disabled = false;
-      return;
+      NB_SAYS = { text: String(e.message || e), bad: true, tried: typed };
+    } finally {
+      NB_SAVING = false;
     }
-    inp.blur();
     paintNotebook();
   };
+  inp.oninput = () => {
+    const open = nbDraft() !== null;
+    inp.classList.toggle("draft", open);
+    save.hidden = !open;
+  };
+  inp.onchange = commit;
+  inp.onkeydown = (e) => {
+    if (e.key === "Enter") { e.preventDefault(); commit(); }
+    if (e.key === "Escape") { inp.value = inp.dataset.saved; NB_SAYS = null; inp.oninput(); inp.blur(); paintNotebook(); }
+  };
+  // Pressed without taking the focus off the box, so the click is the one
+  // save and not a second one behind the box's own.
+  save.onmousedown = (e) => e.preventDefault();
+  save.onclick = commit;
 }
 
 function renderDev() {
@@ -3095,8 +3127,6 @@ function renderDev() {
         }
         // The notes box stands still while it holds something unsaved.
         if (key === "dev:notes" && el && notesBusy()) continue;
-        // And the notebook's cap, while it holds a number not yet saved.
-        if (key === "dev:notebook" && el && nbBusy()) continue;
         // And the folder box, while it holds a path not yet kept.
         if (key === "dev:models" && el && modelsBusy()) continue;
         // A selected file cannot be restored into a file input after a redraw;

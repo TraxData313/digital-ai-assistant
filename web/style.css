@@ -1068,14 +1068,18 @@ a.res-val:hover { color: var(--ink); }
   width: 96px; background: var(--well); color: var(--ink); border: 1px solid var(--line);
   border-radius: 6px; padding: 4px 8px; font: inherit; font-size: 15px; font-variant-numeric: tabular-nums;
 }
-.nb-cap input:focus { outline: none; border-color: var(--ember); }
-.nb-cap input { -moz-appearance: textfield; appearance: textfield; }
-.nb-cap input::-webkit-outer-spin-button, .nb-cap input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.nb-cap input:focus { outline: none; border-color: var(--person); }
+/* A number typed and not saved yet: ember, like everything on this page that
+   is waiting for a word, and its save button beside it. */
+.nb-cap input.draft { border-color: var(--ember); box-shadow: 0 0 0 1px var(--ember); }
 .nb-cap input:disabled { color: var(--dim); }
 .nb-cap .quiet { font-size: 14px; }
-.nb-cap .small-btn:disabled { opacity: .45; cursor: default; }
+.nb-cap .nb-save { background: var(--ember); border-color: var(--ember); color: #1a1310; font-weight: 600; }
+.nb-cap .nb-save:hover { color: #1a1310; filter: brightness(1.08); }
+.nb-cap .nb-save[hidden] { display: none; }
 .dev p.nb-rule { font-size: 13.5px; color: var(--faint); margin: 2px 0 14px; }
 .dev p.nb-rule.bad { color: var(--bad); }
+.dev p.nb-rule.good { color: var(--mint); }
 
 .nb-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 15.5px; }
 .nb-table col.c-id { width: 3em; }
