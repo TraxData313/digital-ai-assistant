@@ -591,8 +591,18 @@ function recallTook(d) {
 }
 
 function recallHead(d) {
-  return [d.model, d.read_lines ? "read the last " + d.read_lines + " lines" : "",
+  const n = (k) => k + " line" + (k === 1 ? "" : "s");
+  return [d.model, d.read_lines ? "writer read the last " + n(d.read_lines) : "",
+          d.review_lines ? "reviewer read the last " + n(d.review_lines) : "",
+          d.reviewed_against ? "reviewed against " + d.reviewed_against : "",
           recallTook(d)].filter(Boolean).join(" \u00b7 ");
+}
+
+// Which suggestions the assistant then pulled in, from the card's `after`,
+// written once its turn was over.
+function pulledOf(d, r) {
+  const p = d.after && d.after.pulled;
+  return p ? p[String(r.id)] || null : null;
 }
 
 function recallKeywords(d) {
@@ -631,11 +641,19 @@ function recallText(d) {
       if (r.found_by === "keyword" && r === res.find((x) => x.found_by === "keyword")) {
         out.push("", "Found by keyword, not already above:");
       }
-      out.push("  " + (r.want != null ? r.want + "%  " : "") + "#" + r.id + "  " + r.name,
+      const how = pulledOf(d, r);
+      out.push("  " + (r.want != null ? r.want + "%  " : "") + "#" + r.id + "  " + r.name +
+               (how ? "   [" + MY_NAME + " pulled it, " + how + "]" : ""),
                "      " + recallFacts(r));
       if (r.note) out.push("      " + r.note);
     }
   } else if (a) out.push("", "Nothing came back.");
+  if (d.after) {
+    const others = d.after.pulled_not_suggested || [];
+    if (!Object.keys(d.after.pulled || {}).length) out.push("", MY_NAME + " pulled none of these.");
+    if (others.length) out.push("", MY_NAME + " also pulled, not suggested: " +
+      others.map((o) => "#" + o.id + " " + o.name + " (" + o.how + ")").join("; "));
+  }
   for (const n of d.notes || []) out.push("note: " + n);
   if (d.missed) out.push("missed: " + d.missed);
   return out.join("\n");
@@ -643,12 +661,13 @@ function recallText(d) {
 
 function wantClass(w) { return w == null ? "none" : w >= 70 ? "hi" : w >= 30 ? "mid" : "lo"; }
 
-function recallRowHtml(r, reviewed) {
+function recallRowHtml(r, reviewed, pulled) {
   const want = reviewed && r.want !== undefined
     ? `<span class="rc-want ${wantClass(r.want)}" title="how much the reviewer thinks ${esc(MY_NAME)} would want to read it">${r.want == null ? "\u2013" : r.want + "%"}</span>`
     : `<span class="rc-want none"></span>`;
   return `<div class="rc-row">${want}<div class="rc-main">` +
-    `<div class="rc-name"><span class="rc-id">#${esc(r.id)}</span> ${esc(r.name)}</div>` +
+    `<div class="rc-name"><span class="rc-id">#${esc(r.id)}</span> ${esc(r.name)}` +
+    (pulled ? ` <span class="rc-pulled">${esc(MY_NAME)} pulled it \u00b7 ${esc(pulled)}</span>` : "") + `</div>` +
     `<div class="rc-facts">${esc(recallFacts(r))}</div>` +
     (r.note ? `<div class="rc-note">${esc(r.note)}</div>` : "") + `</div></div>`;
 }
@@ -672,10 +691,24 @@ function recallHtml(d, key) {
     h += `<div class="cap">What came back${d.searched != null ? " \u2014 of " + d.searched + " essences" : ""}</div>`;
   }
   const byKw = res.filter((r) => r.found_by === "keyword");
-  h += res.filter((r) => r.found_by !== "keyword").map((r) => recallRowHtml(r, true)).join("");
+  h += res.filter((r) => r.found_by !== "keyword").map((r) => recallRowHtml(r, true, pulledOf(d, r))).join("");
   if (byKw.length) {
     h += `<div class="cap">Found by keyword, not already above</div>` +
-      byKw.map((r) => recallRowHtml(r, true)).join("");
+      byKw.map((r) => recallRowHtml(r, true, pulledOf(d, r))).join("");
+  }
+  if (d.after) {
+    const others = d.after.pulled_not_suggested || [];
+    h += `<div class="cap">What ${esc(MY_NAME)} did with it</div>`;
+    if (!Object.keys(d.after.pulled || {}).length) {
+      h += `<div class="rc-facts">${esc(MY_NAME)} pulled none of these</div>`;
+    }
+    if (others.length) {
+      h += `<div class="rc-facts">${esc(MY_NAME)} also pulled, not suggested:</div>` +
+        others.map((o) => recallRowHtml({ id: o.id, name: o.name, date: o.date, keywords_in_it: [] },
+                                        false, o.how)).join("");
+    } else if (Object.keys(d.after.pulled || {}).length) {
+      h += `<div class="rc-facts">nothing else pulled</div>`;
+    }
   }
   if (a && !res.length) h += `<div class="rc-facts">nothing came back</div>`;
   for (const n of d.notes || []) h += `<div class="rc-facts">note: ${esc(n)}</div>`;
@@ -695,6 +728,7 @@ function recallHtml(d, key) {
   const raw = Object.assign({}, d);
   delete raw.before_reply;
   delete raw.late;
+  delete raw.after;
   h += `<details class="rc-raw" data-k="${esc(key)}:raw"${OPEN.has(key + ":raw") ? " open" : ""}>` +
     `<summary>exactly what ${esc(MY_NAME)} was handed</summary>` +
     `<pre>${esc(JSON.stringify(raw, null, 2))}</pre></details>`;
@@ -1979,7 +2013,8 @@ function devRecall() {
   };
   html += `<p class="recall-row knobs">` +
     knob("timeout_s", "hard limit, s", "1", "a turn never waits longer than this for it; when it misses, the turn goes ahead without it") +
-    knob("lines", "lines read", "1", "how many of the last lines of the room the writer reads") +
+    knob("lines", "writer reads, lines", "1", "how many of the last lines of the room the writer reads to write its search") +
+    knob("review_lines", "reviewer reads, lines", "1", "how many of the last lines of the room the reviewer reads to judge each result against") +
     knob("top", "top by likeness", "1", "how many of the closest essences are shown and reviewed") +
     knob("keyword_top", "keyword finds", "1", "how many essences found by keyword are added, when they are not already among the top") +
     knob("read_chars", "reviewer reads, chars", "100", "how much of each result the reviewer reads, from the top") +
@@ -2037,7 +2072,7 @@ function devRecallSearch() {
     field("from", "from", "YYYY-MM-DD") + field("to", "to", "YYYY-MM-DD") + `</div>` +
     `<div class="try-line"><button class="btn" id="try-go"${TRY.busy ? " disabled" : ""}>${TRY.busy ? "searching\u2026" : "search"}</button>` +
     `<label class="quiet"><input type="checkbox" id="try-review"${TRY.review ? " checked" : ""}> ` +
-    `also ask the reviewer (it judges against the room's last lines, and takes a few seconds)</label></div>` +
+    `also ask the reviewer whether each one fits what you typed (a few seconds)</label></div>` +
     `<div id="try-out">${TRY.result ? recallHtml(TRY.result, "try") : ""}</div></div>`;
 }
 

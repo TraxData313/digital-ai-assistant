@@ -2381,10 +2381,11 @@ def run_turn(conn, model: str = DEFAULT_MODEL,
     # What the automatic memory handed it, kept against the reply it was
     # for, before its looks: it happened first. `before_reply` is how the
     # room knows to draw it above its answer.
+    recall_event = None
     if suggested is not None:
-        db.add_event(conn, reply_id, "recall",
-                     "automatic memory: " + recall.summary(suggested),
-                     dict(suggested, before_reply=True))
+        recall_event = db.add_event(conn, reply_id, "recall",
+                                    "automatic memory: " + recall.summary(suggested),
+                                    dict(suggested, before_reply=True))
 
     # The rounds it spent looking are hung off the reply they were for. They
     # could not be written down as they happened -- there was no reply row yet
@@ -2443,6 +2444,19 @@ def run_turn(conn, model: str = DEFAULT_MODEL,
                            say=say)
     if reached:
         db.add_event(conn, reply_id, "fetch", reached["summary"], reached)
+
+    # Which of the automatic memory's suggestions it actually pulled in, now
+    # that the turn knows: written onto the card where it stands, and logged.
+    if recall_event is not None:
+        try:
+            after = recall.after_turn(conn, suggested, [r.get("reach") for r in looked],
+                                      reached, reply_id)
+            done = dict(suggested, after=after)
+            db.update_event(conn, recall_event, "automatic memory: " + recall.summary(done),
+                            dict(done, before_reply=True))
+        except Exception as exc:
+            say("the automatic memory's follow-up broke: " + type(exc).__name__
+                + ": " + str(exc)[:200], "snag")
 
     # Only ever because it asked on this turn. The automatic memory searches
     # ahead of it, but that is a suggestion, kept above, and not this.

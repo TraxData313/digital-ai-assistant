@@ -863,6 +863,15 @@ def add_event(conn, reply_row, kind: str, summary: str, detail=None) -> int:
     return cur.lastrowid
 
 
+def update_event(conn, event_id: int, summary: str, detail=None) -> None:
+    """An event's summary and detail, rewritten in place: for a record that
+    has to stand where it happened but can only be finished later."""
+    conn.execute("UPDATE events SET summary = ?, detail = ? WHERE id = ?",
+                 (summary, json.dumps(detail, ensure_ascii=False)
+                  if detail is not None else None, int(event_id)))
+    conn.commit()
+
+
 def all_events(conn) -> list:
     return [_event_dict(r) for r in
             conn.execute("SELECT * FROM events ORDER BY id")]

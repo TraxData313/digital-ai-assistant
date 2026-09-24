@@ -377,6 +377,10 @@ details.act > summary { cursor: pointer; }
 .rc .rc-name { color: var(--ink); }
 .rc .rc-id { color: var(--faint); font-variant-numeric: tabular-nums; }
 .rc .rc-note { font-style: italic; }
+.rc .rc-pulled {
+  display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 4px;
+  font-size: 12.5px; background: rgba(240,149,74,.2); color: var(--ember);
+}
 .rc .recall-more { margin: 6px 0 2px 54px; padding: 1px 8px; }
 .rc .rc-raw { margin-top: 8px; }
 .rc .rc-raw > summary { cursor: pointer; color: var(--faint); font-size: 13.5px; }

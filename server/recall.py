@@ -42,6 +42,10 @@ from . import db, embed, people, pictures
 from . import home
 
 SETTINGS_PATH = home.DATA / "recall.json"
+# One line per turn: what was searched, what came back, what the reviewer
+# said, and which essences the assistant then actually pulled in -- kept for
+# measuring, and one day for training.
+LOG_PATH = home.DATA / "recall_log.jsonl"
 CONFIG_PATH = home.prompt_path("recall_prompts.py")
 
 # LM Studio's local server. Its own port, not ours.
@@ -61,6 +65,8 @@ KNOBS = {
     "timeout_s":  {"default": 20.0, "min": 1.0, "max": 60.0, "type": float},
     # how many of the last lines of the room the writer reads
     "lines":      {"default": 5, "min": 1, "max": 12, "type": int},
+    # and how many the reviewer reads to judge what came back against
+    "review_lines": {"default": 5, "min": 1, "max": 12, "type": int},
     # how many results by likeness are shown and reviewed
     "top":        {"default": 3, "min": 1, "max": 10, "type": int},
     # how many keyword finds are added on top, when they are not already shown
@@ -708,13 +714,21 @@ def write_messages(told: dict, examples: list, lines: list) -> list:
 REVIEW_BUDGET = 16000
 
 
-def review_messages(told: dict, lines: list, results: list, texts: dict, chars: int) -> list:
+def review_messages(told: dict, lines: list, results: list, texts: dict, chars: int,
+                    looking_for: str = None) -> list:
+    """The reviewer's call. Against the room's last lines, or, from the
+    Menu's search box, against what was typed there."""
     chars = min(chars, REVIEW_BUDGET // max(1, len(results)))
     parts = []
     for r in results:
         parts.append("id " + str(r["id"]) + " (" + r["date"] + "):\n"
                      + _cut(texts.get(r["id"], ""), chars))
-    user = ("The last lines of the room, oldest first:\n" + lines_text(lines)
+    if looking_for:
+        context = ("Instead of the room, judge against what " + home.OWNER_NAME
+                   + " is looking for:\n" + looking_for)
+    else:
+        context = "The last lines of the room, oldest first:\n" + lines_text(lines)
+    user = (context
             + "\n\nThe essences the search brought back:\n\n"
             + "\n\n".join(parts)
             + "\n\nWrite a note and a want for each id.")
@@ -731,10 +745,10 @@ HOW = ("A small local model's suggestions, not memories: it wrote the search "
        "shows the ones further down.")
 
 
-def _review(key, told, lines, found, cfg, block, sent):
+def _review(key, told, lines, found, cfg, block, sent, looking_for=None):
     """The reviewer's note and want on each result, written into `block`."""
     sent["review"] = review_messages(told, lines, found["results"],
-                                     found["texts"], cfg["read_chars"])
+                                     found["texts"], cfg["read_chars"], looking_for)
     t = time.time()
     try:
         reviewed = _complete(key, sent["review"], REVIEW_SHAPE, "review",
@@ -770,7 +784,7 @@ def _run(key, lines, cfg, box):
     goes into `box` and STATE['last'] -- the latter even if the turn has gone
     on without it."""
     started = time.time()
-    block = _block(key, read_lines=len(lines))
+    block = _block(key, read_lines=min(len(lines), cfg["lines"]))
     sent = {}
     _set(phase="working")
     conn = db.connect()
@@ -778,9 +792,13 @@ def _run(key, lines, cfg, box):
         if not lines:
             block["missed"] = "there were no lines in the room to read"
             return
+        block["line_ids"] = [ln["id"] for ln in lines]
+        writer_lines = lines[-cfg["lines"]:]
+        review_lines = lines[-cfg["review_lines"]:]
+        block["read_lines"] = len(writer_lines)
         told = config()
         examples = style_examples(db.essence_shelf(conn))
-        sent["write"] = write_messages(told, examples, lines)
+        sent["write"] = write_messages(told, examples, writer_lines)
         t = time.time()
         wrote = _complete(key, sent["write"], WRITE_SHAPE, "search")
         block["write_s"] = round(time.time() - t, 2)
@@ -801,7 +819,8 @@ def _run(key, lines, cfg, box):
         block["notes"] = found["notes"]
         block["results"] = found["results"]
         if found["results"]:
-            _review(key, told, lines, found, cfg, block, sent)
+            block["review_lines"] = len(review_lines)
+            _review(key, told, review_lines, found, cfg, block, sent)
     except NoServer as e:
         _set(phase="no server", detail=str(e))
         block["missed"] = str(e)
@@ -860,13 +879,73 @@ def try_search(conn, spec: dict, review: bool = False) -> dict:
             if not cfg["model"]:
                 block["notes"].append("no model is chosen, so nothing was reviewed")
             else:
-                lines = last_lines(conn, cfg["lines"])
-                block["read_lines"] = len(lines)
-                _review(cfg["model"], config(), lines, found, cfg, block, {})
+                wanted = ["essence: " + (asked["essence"] or "(none)"),
+                          "keywords: " + (", ".join(asked["keywords"]) or "(none)")]
+                if asked["from"] or asked["to"]:
+                    wanted.append("dates: " + (asked["from"] or "the beginning")
+                                  + " to " + (asked["to"] or "now"))
+                block["reviewed_against"] = "what was typed"
+                _review(cfg["model"], config(), [], found, cfg, block, {},
+                        looking_for="\n".join(wanted))
     except embed.Unavailable as e:
         block["missed"] = "the embedder is not available: " + str(e)
     block["took_s"] = round(time.time() - started, 2)
     return block
+
+
+def _reached(report) -> set:
+    """Every row a fetch report says it brought into view: brought back,
+    already in hand when asked for, or an essence whose sources it reached."""
+    if not report:
+        return set()
+    return (set(report.get("brought_back") or []) | set(report.get("already_here") or [])
+            | set(report.get("through_essences") or []))
+
+
+def after_turn(conn, block: dict, looked: list, kept, reply_row=None) -> dict:
+    """After the assistant's turn: which of the suggestions it actually pulled
+    in -- while looking before it answered, or kept after answering -- and
+    which essences it pulled that were never suggested. Logged, one line per
+    turn, to LOG_PATH. Returns the `after` record for the room's card; it is
+    not part of what the assistant was handed."""
+    read = set()
+    for report in looked or []:
+        read |= _reached(report)
+    kept_ids = _reached(kept)
+    suggested = [r["id"] for r in block.get("results") or []]
+    pulled = {}
+    for i in suggested:
+        if i in read:
+            pulled[str(i)] = "while looking"
+        elif i in kept_ids:
+            pulled[str(i)] = "kept after answering"
+    other_ids = sorted((read | kept_ids) - set(suggested))
+    others = []
+    if other_ids:
+        marks = ",".join("?" * len(other_ids))
+        for r in conn.execute("SELECT id, title, text, dt FROM rows WHERE kind = 'essence'"
+                              " AND id IN (" + marks + ")", other_ids):
+            others.append({"id": r["id"], "name": name_of(dict(r)), "date": _local(r["dt"]),
+                           "how": "while looking" if r["id"] in read else "kept after answering"})
+    after = {"pulled": pulled, "pulled_not_suggested": others}
+    if block.get("asked"):
+        entry = {"at": db.now(), "reply_row": reply_row, "model": block.get("model"),
+                 "line_ids": block.get("line_ids"), "asked": block.get("asked"),
+                 "keyword_counts": block.get("keyword_counts"),
+                 "results": [dict({k: r.get(k) for k in
+                                   ("id", "score", "found_by", "keywords_in_it",
+                                    "in_hand", "want", "note")},
+                                  pulled=pulled.get(str(r["id"])))
+                             for r in block.get("results") or []],
+                 "pulled_not_suggested": [{"id": o["id"], "how": o["how"]} for o in others],
+                 "took_s": block.get("took_s"), "missed": block.get("missed")}
+        try:
+            LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+            with open(LOG_PATH, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        except OSError as e:
+            after["log_error"] = str(e)
+    return after
 
 
 def summary(block: dict) -> str:
@@ -889,6 +968,11 @@ def summary(block: dict) -> str:
         line += " · " + format(block["took_s"], ".1f") + " s"
     if block.get("missed"):
         line += " · " + block["missed"]
+    after = block.get("after")
+    if after is not None:
+        got = list(after.get("pulled") or {})
+        line += (" · " + home.NAME + " pulled " + ", ".join("#" + i for i in got)
+                 if got else " · " + home.NAME + " pulled none of them")
     return line
 
 
@@ -900,7 +984,7 @@ def before_she_speaks(conn, say=None):
     if not key:
         return None
     say = say or (lambda *a, **k: None)
-    lines = last_lines(conn, cfg["lines"])
+    lines = last_lines(conn, max(cfg["lines"], cfg["review_lines"]))
     timeout = cfg["timeout_s"]
     box = {}
     worker = threading.Thread(target=_run, args=(key, lines, cfg, box), daemon=True)
@@ -965,7 +1049,7 @@ if __name__ == "__main__":
         if not key:
             print("no model chosen; pass a key:", ", ".join(m["key"] for m in MODELS))
             raise SystemExit(1)
-        lines = last_lines(conn, cfg["lines"])
+        lines = last_lines(conn, max(cfg["lines"], cfg["review_lines"]))
         print(lines_text(lines))
         _set(model=key)
         _switch(None, key)
