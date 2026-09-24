@@ -337,6 +337,14 @@ details.act > summary { cursor: pointer; }
 .act.dream .lbl { color: #ba94de; }
 .act.recall { border-left-color: rgba(125,223,180,.5); }
 .act.recall .lbl { color: var(--mint); }
+/* How many of a card's suggestions are in use: quiet at 0, hot from 1. */
+.act .rc-count {
+  flex: none; min-width: 18px; text-align: center; border-radius: 9px; padding: 0 5px;
+  font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums;
+  color: var(--faint); border: 1px solid var(--line);
+}
+.act .rc-count.hot { color: #fff; background: var(--bad); border-color: var(--bad);
+  box-shadow: 0 0 8px rgba(255,123,107,.55); }
 .act.world { border-left-color: rgba(230,192,122,.55); }
 .act.world .lbl { color: #e6c07a; }
 .act.job { border-left-color: rgba(129,199,132,.55); }

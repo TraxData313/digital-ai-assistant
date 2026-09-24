@@ -601,6 +601,24 @@ function recallHead(d) {
 
 // Which suggestions the assistant then pulled in, from the card's `after`,
 // written once its turn was over.
+let LOADED_ESS = new Set();
+
+function useOf(d, r) {
+  const how = pulledOf(d, r);
+  if (how) return MY_NAME + " pulled it \u00b7 " + how;
+  if (LOADED_ESS.has(r.id)) return "in " + MY_NAME + "'s memory now";
+  return null;
+}
+
+function recallBadge(d) {
+  if (!d || !d.asked || !Array.isArray(d.results)) return "";
+  const used = d.results.map((r) => [r, useOf(d, r)]).filter(([, u]) => u);
+  const title = used.length
+    ? used.map(([r, u]) => "#" + r.id + " \u2014 " + u).join("\n")
+    : "none of these suggestions was pulled, and none is in " + MY_NAME + "'s memory now";
+  return `<span class="rc-count${used.length ? " hot" : ""}" title="${esc(title)}">${used.length}</span>`;
+}
+
 function pulledOf(d, r) {
   const p = d.after && d.after.pulled;
   return p ? p[String(r.id)] || null : null;
@@ -668,7 +686,7 @@ function recallRowHtml(r, reviewed, pulled) {
     : `<span class="rc-want none"></span>`;
   return `<div class="rc-row">${want}<div class="rc-main">` +
     `<div class="rc-name"><span class="rc-id">#${esc(r.id)}</span> ${esc(r.name)}` +
-    (pulled ? ` <span class="rc-pulled">${esc(MY_NAME)} pulled it \u00b7 ${esc(pulled)}</span>` : "") + `</div>` +
+    (pulled ? ` <span class="rc-pulled">${esc(pulled)}</span>` : "") + `</div>` +
     `<div class="rc-facts">${esc(recallFacts(r))}</div>` +
     (r.note ? `<div class="rc-note">${esc(r.note)}</div>` : "") + `</div></div>`;
 }
@@ -692,10 +710,10 @@ function recallHtml(d, key) {
     h += `<div class="cap">What came back${d.searched != null ? " \u2014 of " + d.searched + " essences" : ""}</div>`;
   }
   const byKw = res.filter((r) => r.found_by === "keyword");
-  h += res.filter((r) => r.found_by !== "keyword").map((r) => recallRowHtml(r, true, pulledOf(d, r))).join("");
+  h += res.filter((r) => r.found_by !== "keyword").map((r) => recallRowHtml(r, true, useOf(d, r))).join("");
   if (byKw.length) {
     h += `<div class="cap">Found by keyword, not already above</div>` +
-      byKw.map((r) => recallRowHtml(r, true, pulledOf(d, r))).join("");
+      byKw.map((r) => recallRowHtml(r, true, useOf(d, r))).join("");
   }
   if (d.after) {
     const others = d.after.pulled_not_suggested || [];
@@ -706,7 +724,7 @@ function recallHtml(d, key) {
     if (others.length) {
       h += `<div class="rc-facts">${esc(MY_NAME)} also pulled, not suggested:</div>` +
         others.map((o) => recallRowHtml({ id: o.id, name: o.name, date: o.date, keywords_in_it: [] },
-                                        false, o.how)).join("");
+                                        false, MY_NAME + " pulled it \u00b7 " + o.how)).join("");
     } else if (Object.keys(d.after.pulled || {}).length) {
       h += `<div class="rc-facts">nothing else pulled</div>`;
     }
@@ -826,8 +844,8 @@ function tidySummary(s) {
 }
 
 // One small line. With a body it opens; without, it is just the line.
-function actHtml(key, cls, label, text, bodyHtml, grey) {
-  const line = `<span class="lbl">${esc(label)}</span><span class="txt">${esc(text)}</span>`;
+function actHtml(key, cls, label, text, bodyHtml, grey, badge) {
+  const line = `<span class="lbl">${esc(label)}</span>${badge || ""}<span class="txt">${esc(text)}</span>`;
   const g = grey ? " grey" : "";
   if (!bodyHtml) return `<div class="act ${cls}${g}"><div class="line">${line}</div></div>`;
   const open = OPEN.has(key) ? " open" : "";
@@ -918,7 +936,10 @@ function actFromEvent(e, grey) {
   const mono = e.kind === "files" || e.kind === "shelf" || e.kind === "native";
   const download = e.kind === "native" && e.detail && Number.isInteger(e.detail.request_row)
     ? `<a href="api/native-log?row=${e.detail.request_row}" download="native-turn-${e.detail.request_row}.json">Download run log</a>` : "";
-  if (e.kind === "recall" && e.detail) return actHtml("ev:" + e.id, cls, label, text, recallHtml(e.detail, "ev:" + e.id), grey);
+  if (e.kind === "recall" && e.detail) {
+    return actHtml("ev:" + e.id, cls, label, text, recallHtml(e.detail, "ev:" + e.id), grey,
+                   recallBadge(e.detail));
+  }
   return actHtml("ev:" + e.id, cls, label, text, body(eventDetail(e), mono) + download, grey);
 }
 
@@ -1362,6 +1383,7 @@ function renderChat() {
     else if (r.kind === "essence") essMem.push(r);
     else mem.push(r);
   }
+  LOADED_ESS = new Set(essMem.map((r) => r.id));
   // What is drawn is what the room holds; what is hidden is still on the
   // server, and the button goes and gets it.
   let html = "";
@@ -1439,7 +1461,10 @@ function liveStep(s, key, afterReply) {
   if (s.detail && LIVE_LABEL[s.kind]) {
     const [label, cls] = LIVE_LABEL[s.kind];
     const mono = s.kind === "files" || s.kind === "shelf" || s.kind === "native";
-    if (s.kind === "recall") return actHtml(key, cls, label, tidySummary(s.text), recallHtml(s.detail, key));
+    if (s.kind === "recall") {
+      return actHtml(key, cls, label, tidySummary(s.text), recallHtml(s.detail, key), false,
+                     recallBadge(s.detail));
+    }
     return actHtml(key, cls, label, tidySummary(s.text),
                    body(stepText(s), mono));
   }
