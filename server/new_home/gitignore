@@ -36,11 +36,8 @@ data/overmind.tmp
 data/workers/
 data/worktrees/
 
-# Pictures shown to the assistant, and anything trained on its store. Its
-# store's text, laid out another way -- they ride in the backup zip.
+# Pictures shown to the assistant. They ride in the backup zip.
 data/pictures/
-data/adapter/
-data/writer/
 
 # Free notes: somebody's own scratch. They ride in the backup zip.
 data/notes/

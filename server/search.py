@@ -29,22 +29,12 @@ Two arms, because they fail in opposite ways:
 
 Either can come back empty, and which one did is said out loud. An empty
 search that reads like a full one is the failure this file exists to prevent.
-
-The meaning arm can run under an adapter (`adapt.py`): one small map laid
-over the probe and over every shelf vector at the moment they are compared,
-with a floor of its own that travels inside the version. The assistant's
-deliberate search is the only counter-signal for what the map is blind to,
-so while one is live the base space is scored too -- every hit carries both
-scores, and an essence the base search would have shown that this one did
-not is shown after the hits, marked as the shadow's. Every report says which
-version it ran under; with none live the report is what it always was, to
-the bit.
 """
 
 import os
 import sys
 
-from . import adapt, db, embed
+from . import db, embed
 from . import home
 
 # The floor a hit must clear to be a hit at all, measured rather than guessed.
@@ -85,31 +75,6 @@ FLOOR = float(os.environ.get("ASSISTANT_SEARCH_FLOOR", "0.45"))
 NEAR_MISS = 0.05
 
 
-def floor_now(adapter=None) -> float:
-    """The floor a search is held to right now: the live adapter's own when
-    it carries one, else `FLOOR`. A floor belongs to the space it was
-    measured in and travels inside the version, so a rollback restores the
-    floor that was measured with the map it rolls back to. None asks for
-    the live adapter; False is the base space on purpose; an `Adapter` is
-    asked directly."""
-    if adapter is None:
-        adapter = adapt.current()
-    if adapter is None or adapter is False:
-        return FLOOR
-    return FLOOR if adapter.floor is None else float(adapter.floor)
-
-
-def _which(adapter):
-    """Which map a search runs under, and what to say if the one named
-    cannot be used. None asks for the live one; False is the identity on
-    purpose; an `Adapter` is itself. Returns (adapter or None, trouble)."""
-    if adapter is None:
-        return adapt.current(), adapt.problem()
-    if adapter is False:
-        return None, None
-    return adapter, None
-
-
 DEFAULT_LIMIT = 10
 MAX_LIMIT = 25
 
@@ -142,37 +107,6 @@ def _hit(row, score, matched) -> dict:
             "matched": matched}
 
 
-def _ids(ids) -> str:
-    return ", ".join("#" + str(i) for i in ids)
-
-
-def _disagreement(hidden, only_here) -> str:
-    """Where the two spaces parted: what the base space would have shown
-    and this search hid, and what this search shows that the base would
-    not have. Said by id, so it can take either down and judge."""
-    n = len(hidden) + len(only_here)
-    line = ("The base space and the adapted space disagreed on " + str(n)
-            + " essence" + ("" if n == 1 else "s") + ". ")
-    if hidden:
-        line += ("The base space clears its floor of " + format(FLOOR, ".2f")
-                 + " on " + _ids(hidden) + " and this search did not show "
-                 + ("it" if len(hidden) == 1 else "them") + ", so "
-                 + ("it stands" if len(hidden) == 1 else "they stand")
-                 + " after the hits as the shadow's, the base score beside "
-                 "the adapted one")
-        if only_here:
-            line += ("; and " + _ids(only_here)
-                     + (" is" if len(only_here) == 1 else " are")
-                     + " shown here that the base space would not have shown.")
-        else:
-            line += "."
-    else:
-        line += (_ids(only_here) + (" is" if len(only_here) == 1 else " are")
-                 + " shown here that the base space would not have shown; "
-                 "nothing the base space cleared was hidden.")
-    return line
-
-
 def _asked(spec, limit) -> dict:
     return {
         "restatement": spec.get("restatement") or None,
@@ -184,15 +118,14 @@ def _asked(spec, limit) -> dict:
     }
 
 
-def _empty(asked, problems, notes=None, floor=FLOOR, adapter=None) -> dict:
+def _empty(asked, problems, notes=None) -> dict:
     """A search that did not happen, shaped exactly like one that did -- so
     nothing downstream has to remember that empty is a different thing."""
     return {
         "asked": asked,
         "hits": [],
         "searched": 0,
-        "floor": floor,
-        "adapter": None if adapter is None else adapter.name,
+        "floor": FLOOR,
         "best_score_seen": None,
         "arms": {},
         "not_scored": {},
@@ -203,20 +136,13 @@ def _empty(asked, problems, notes=None, floor=FLOOR, adapter=None) -> dict:
     }
 
 
-def run(conn, spec: dict, adapter=None) -> dict:
+def run(conn, spec: dict) -> dict:
     """One search. Returns what to tell it -- never rows, never text.
 
     Nothing in here is silent. A bound that cannot be read refuses the whole
     search rather than widening it; an essence whose vector no longer matches
     its words is left out of the ranking and named; an arm that found nothing
-    says so as an arm, not as an absence.
-
-    `adapter` is which map the meaning arm runs under: None asks for the
-    live one, False is the identity on purpose, and an `Adapter` handed in
-    is used as it is -- which is how a candidate map is measured before it
-    is ever named live. Under a map every hit carries the base space's
-    score beside its own, and what today's search would have shown that
-    this one did not comes after the hits, marked as the shadow's."""
+    says so as an arm, not as an absence."""
     spec = spec or {}
     restatement = (spec.get("restatement") or "").strip()
     keywords = [str(k).strip() for k in (spec.get("keywords") or []) if str(k).strip()]
@@ -232,19 +158,11 @@ def run(conn, spec: dict, adapter=None) -> dict:
         limit = MAX_LIMIT
     limit = max(1, limit)
     asked = _asked(spec, limit)
-
-    # Which space this search runs in, settled before anything else, so
-    # that even a search that is refused is stamped with it. A version that
-    # is named and cannot be applied is said here, once, in words.
-    adapter, trouble = _which(adapter)
-    if trouble:
-        notes.append(trouble)
-    floor = floor_now(adapter if adapter is not None else False)
+    floor = FLOOR
 
     if not restatement and not keywords:
         return _empty(asked, ["I ran a search with neither a restatement nor a "
-                              "keyword, so there was nothing to look for."],
-                      floor=floor, adapter=adapter)
+                              "keyword, so there was nothing to look for."])
 
     # A bound it wrote badly is refused outright. A missing end is not a
     # narrower reach, it is every essence I have -- the same rule the fetch
@@ -254,8 +172,7 @@ def run(conn, spec: dict, adapter=None) -> dict:
     bad = [c for c in (lo_bad, hi_bad) if c]
     if bad:
         return _empty(asked, bad + ["So I did not search at all, rather than "
-                                    "search a wider stretch than I meant."],
-                      floor=floor, adapter=adapter)
+                                    "search a wider stretch than I meant."])
 
     shelf = db.essence_shelf(conn, include_retired=bool(spec.get("include_retired")))
     within = [r for r in shelf
@@ -272,7 +189,7 @@ def run(conn, spec: dict, adapter=None) -> dict:
             + ("" if asked["include_retired"] else
                ", once the ones I have already rewritten are left out")
             + ". Nothing was compared against anything.")
-        out = _empty(asked, problems, notes, floor=floor, adapter=adapter)
+        out = _empty(asked, problems, notes)
         out["summary"] = "nothing to search"
         return out
 
@@ -287,7 +204,6 @@ def run(conn, spec: dict, adapter=None) -> dict:
     meaning = {}
     meaning_ran = False
     best_seen = None
-    probe, base = None, {}
 
     for row in within:
         got = vectors.get(row["id"])
@@ -315,29 +231,8 @@ def run(conn, spec: dict, adapter=None) -> dict:
                 + str(e) + "), so nothing was compared by meaning. The keyword "
                 "arm is all this search is.")
         if probe is not None:
-            # The base space first, exactly as it always was: a Python sum
-            # over the stored floats, so a search with no adapter is the
-            # same search to the bit -- and under one, the base score is
-            # what today's search would have said.
             for row in fresh:
-                base[row["id"]] = cosine(probe["vec"], vectors[row["id"]]["vec"])
-            scores = base
-            if adapter is not None:
-                # The map over the probe and over every fresh vector, at
-                # this moment and never on the shelf itself: a half-adapted
-                # shelf cannot exist because there is no adapted shelf.
-                try:
-                    ids = [r["id"] for r in fresh]
-                    mapped = adapter.apply_many([vectors[i]["vec"] for i in ids])
-                    dots = mapped @ adapter.apply(probe["vec"])
-                    scores = {i: float(s) for i, s in zip(ids, dots)}
-                except Exception as e:   # identity or nothing, said out loud
-                    problems.append(
-                        "The adapter " + adapter.name + " could not be laid "
-                        "over the vectors (" + type(e).__name__ + ": " + str(e)
-                        + "), so this search ran in the base space with the "
-                        "base floor of " + format(FLOOR, ".2f") + ".")
-                    adapter, floor = None, FLOOR
+                scores[row["id"]] = cosine(probe["vec"], vectors[row["id"]]["vec"])
             if scores:
                 best_seen = max(scores.values())
             meaning = {i: s for i, s in scores.items() if s >= floor}
@@ -369,33 +264,6 @@ def run(conn, spec: dict, adapter=None) -> dict:
     # resemblance to claim.
     picked.sort(key=lambda h: (h["score"] is None, -(h["score"] or 0), h["id"]))
     kept, withheld = picked[:limit], picked[limit:]
-
-    # -- the shadow -----------------------------------------------------
-    #
-    # The deliberate search is the only counter-signal for what the map is
-    # blind to, so under an adapter the base space stays alive, forever.
-    # What the base search would have shown -- the base space's own hits
-    # over its own floor, within the same limit -- and this search did not,
-    # comes after the hits marked as the shadow's. Every hit carries both
-    # scores, and where the two spaces disagree is written down by id.
-    shadow, base_over, disagreed = [], {}, 0
-    if adapter is not None and probe is not None:
-        base_over = {i: s for i, s in base.items() if s >= FLOOR}
-        base_rank = sorted(base_over, key=lambda i: (-base_over[i], i))[:limit]
-        ranked, shown = set(base_rank), {h["id"] for h in kept}
-        hidden = [i for i in base_rank if i not in shown]
-        only_here = [h["id"] for h in kept
-                     if h["id"] in meaning and h["id"] not in ranked]
-        for i in hidden:
-            h = _hit(by_id[i], scores.get(i), "shadow")
-            h["shadow"] = True
-            shadow.append(h)
-        for h in kept + shadow:
-            b = base.get(h["id"])
-            h["base_score"] = None if b is None else round(b, 3)
-        disagreed = len(hidden) + len(only_here)
-        if disagreed:
-            notes.append(_disagreement(hidden, only_here))
 
     if withheld:
         problems.append(
@@ -447,15 +315,6 @@ def run(conn, spec: dict, adapter=None) -> dict:
                    if near else
                    "Nothing came close, so either I never wrote this down, or I "
                    "am asking for it in words nothing of mine shares."))
-        if adapter is not None and probe is not None:
-            arms["shadow"] = {
-                "ran": True,
-                "floor": FLOOR,
-                "over_the_floor": len(base_over),
-                "shown": len(shadow),
-                "disagreed": disagreed,
-                "best_score": None if not base else round(max(base.values()), 3),
-            }
     if keywords:
         arms["keywords"] = {"ran": True, "found": len(found_by),
                             "per_keyword": per_keyword}
@@ -468,12 +327,9 @@ def run(conn, spec: dict, adapter=None) -> dict:
 
     report = {
         "asked": asked,
-        "hits": kept + shadow,
+        "hits": kept,
         "searched": len(within),
         "floor": floor,
-        # The stamp: a search under v1 and a search under v2 are different
-        # searches and say so. None is the base space, which is today.
-        "adapter": None if adapter is None else adapter.name,
         "best_score_seen": None if best_seen is None else round(best_seen, 3),
         "arms": arms,
         "not_scored": {k: v for k, v in
@@ -482,9 +338,6 @@ def run(conn, spec: dict, adapter=None) -> dict:
         "notes": notes,
         "problems": problems,
     }
-    if adapter is not None and probe is not None:
-        report["base_best_seen"] = (None if not base
-                                    else round(max(base.values()), 3))
     report["summary"] = summarise(report)
     return report
 
@@ -636,10 +489,7 @@ def _inventory_summary(report: dict) -> str:
 
 
 def summarise(report: dict) -> str:
-    hits = [h for h in report["hits"] if not h.get("shadow")]
-    shadow = [h for h in report["hits"] if h.get("shadow")]
-    tail = ("; the shadow adds " + str(len(shadow)) + " from the base space"
-            if shadow else "")
+    hits = report["hits"]
     if not hits:
         line = ("searched " + str(report["searched"]) + " essence"
                 + ("" if report["searched"] == 1 else "s")
@@ -648,7 +498,7 @@ def summarise(report: dict) -> str:
             line += (" -- the best anything scored was "
                      + format(report["best_score_seen"], ".3f")
                      + ", under the floor of " + format(report["floor"], ".2f"))
-        return line + tail
+        return line
     kinds = [h["matched"] for h in hits]
     parts = []
     for name in ("both", "meaning", "keywords"):
@@ -658,14 +508,12 @@ def summarise(report: dict) -> str:
     return ("found " + str(len(hits)) + " of " + str(report["searched"])
             + " essences (" + ", ".join(parts) + ")"
             + (", best " + format(hits[0]["score"], ".3f")
-               if hits[0]["score"] is not None else "") + tail)
+               if hits[0]["score"] is not None else ""))
 
 
 # --- from the outside --------------------------------------------------------
 #
-#     python -m server.search floor          -- re-measure the floor, under the live adapter
-#     python -m server.search floor none     -- the same in the base space
-#     python -m server.search floor <name>   -- the same under one version, live or not
+#     python -m server.search floor          -- re-measure the floor
 #     python -m server.search "..."          -- run one search and read it
 #
 # The probes are written down here rather than invented fresh each time: the
@@ -706,57 +554,42 @@ def probes() -> list:
     return list(PROBES)
 
 
-def measure(conn, say=print, adapter=None) -> dict:
+def measure(conn, say=print) -> dict:
     """Every probe against the shelf as it stands. What matters is not any one
     number but the gap between the two groups -- and whether the floor is still
-    sitting in it.
-
-    `adapter` as in `run`: None is the live one, False the base space, an
-    `Adapter` itself -- so a candidate version's floor can be measured before
-    it is ever named live. The hits counted are the space's own; the shadow's
-    are not, since they are the base space's answer and not this one's."""
-    which, trouble = _which(adapter)
-    floor = floor_now(which if which is not None else False)
+    sitting in it."""
+    floor = FLOOR
     embed.read(["warm the model up"])
-    say("under " + (("adapter " + which.name) if which is not None
-                    else "no adapter -- the base space")
-        + ", floor " + format(floor, ".2f"))
-    if trouble:
-        say(trouble)
+    say("floor " + format(floor, ".2f"))
     good, poor, rows = [], [], []
     for lang, wanted, text in probes():
         report = run(conn, {"restatement": text, "keywords": [], "from": None,
                             "to": None, "limit": DEFAULT_LIMIT,
-                            "include_retired": False},
-                     adapter=which if which is not None else False)
+                            "include_retired": False})
         best = report["best_score_seen"]
         (good if wanted else poor).append(best)
-        rows.append((lang, wanted, text, best,
-                     sum(1 for h in report["hits"] if not h.get("shadow"))))
+        rows.append((lang, wanted, text, best, len(report["hits"])))
 
     say("%-3s %-6s %-56s %6s %5s" % ("", "", "restatement", "best", "hits"))
     for lang, wanted, text, best, n in rows:
         say("%-3s %-6s %-56s %6.3f %5d"
             % (lang, "real" if wanted else "noise", text[:56], best or 0, n))
 
-    out = {"adapter": None if which is None else which.name,
-           "floor": floor, "shelf": len(db.essence_shelf(conn, False)),
+    out = {"floor": floor, "shelf": len(db.essence_shelf(conn, False)),
            "good_worst": min(good), "good_best": max(good),
            "poor_worst": min(poor), "poor_best": max(poor),
            "missed": [text for (lang, wanted, text, best, n) in rows
                       if wanted and best < floor],
            "let_through": [text for (lang, wanted, text, best, n) in rows
                            if not wanted and best >= floor],
-           # Every probe's own number, so a caller measuring several maps
-           # side by side can put the same probe on one line under each.
+           # Every probe's own number, so two measurements can be put
+           # side by side a probe to a line.
            "probes": [{"lang": lang, "real": wanted, "text": text,
                        "best": best, "hits": n}
                       for (lang, wanted, text, best, n) in rows]}
     say("")
     say("floor          " + format(floor, ".2f")
-        + "   over a shelf of " + str(out["shelf"])
-        + ("   under adapter " + which.name if which is not None
-           else "   in the base space"))
+        + "   over a shelf of " + str(out["shelf"]))
     say("real probes    " + format(min(good), ".3f") + " .. "
         + format(max(good), ".3f"))
     say("noise probes   " + format(min(poor), ".3f") + " .. "
@@ -777,30 +610,18 @@ def _main(argv):
     what = argv[1] if len(argv) > 1 else "floor"
 
     if what == "floor":
-        pick = argv[2] if len(argv) > 2 else None
-        try:
-            adapter = (None if pick is None
-                       else False if pick.lower() in ("none", "base", "identity")
-                       else adapt.load(pick))
-        except adapt.Refused as exc:
-            print("  refused: " + str(exc))
-            return 1
-        measure(conn, adapter=adapter)
+        measure(conn)
         return 0
 
     report = run(conn, {"restatement": what, "keywords": argv[2:], "from": None,
                         "to": None, "limit": DEFAULT_LIMIT,
                         "include_retired": False})
-    print(report["summary"]
-          + ("   [adapter " + report["adapter"] + "]" if report.get("adapter")
-             else ""))
+    print(report["summary"])
     for hit in report["hits"]:
         print("  " + ("  --  " if hit["score"] is None
                       else format(hit["score"], ".3f"))
               + "  #" + str(hit["id"]) + "  "
-              + (hit["title"] or "(untitled)") + "   [" + hit["matched"] + "]"
-              + (("  base only, " + format(hit["base_score"], ".3f")
-                  + " in the base space") if hit.get("shadow") else ""))
+              + (hit["title"] or "(untitled)") + "   [" + hit["matched"] + "]")
     for line in report["notes"] + report["problems"]:
         print("  " + line)
     return 0

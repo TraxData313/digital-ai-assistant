@@ -68,10 +68,6 @@ ALSO = ["spark.md", "spark.history", "plan.json", "voice.json", "recall.json",
         # copy without them would boot the assistant without the standing word
         # its people keep in front of it.
         "notes",
-        # The adapter's versions, beside the Spark's own: a restore without
-        # them would search the store in a space it never ruled on, with a floor
-        # measured for another. Small -- a quarter of a megabyte each.
-        "adapter",
         # The logs of the hands it sent before sessions replaced them: history
         # its old rows point at.
         "workers", "hands.json",

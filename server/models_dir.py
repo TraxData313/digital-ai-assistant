@@ -3,16 +3,15 @@
 Two kinds of model live on this machine and only one of them was ever asked
 where to go. LM Studio's -- the automatic memory's small model, the digest's
 -- go where LM Studio's own setting says. Ours -- BGE-M3, the embedder that
-reads the assistant's essences into vectors, and one day whatever the night
-trains from its shelf -- went wherever the Hugging Face cache is, usually the
-system drive, which fills up: one embedder can be several gigabytes, and
-downloaded twice over in two weight formats.
+reads the assistant's essences into vectors -- went wherever the Hugging Face
+cache is, usually the system drive, which fills up: one embedder can be
+several gigabytes, and downloaded twice over in two weight formats.
 
 So: one folder, the owner's to choose under Settings, that every model we fetch
 ourselves is kept in. `data/models.json` holds the choice; nothing chosen
 means the cache where it always was, so a room with no file behaves as it
 did before this existed. The embedder hands the folder to sentence-
-transformers as its cache, and a model trained later is written beside it.
+transformers as its cache.
 
 Changing the folder moves what is already downloaded, in the background, a
 file at a time, with the count shown -- because a choice that quietly left
@@ -105,8 +104,8 @@ def _write(cfg: dict):
     out = {
         "folder": cfg.get("folder"),
         "note": ("Where the models we fetch ourselves are kept -- the "
-                 "embedder that reads the essences, and anything trained "
-                 "later. Chosen under Settings; null means the Hugging Face "
+                 "embedder that reads the essences. Chosen under Settings; "
+                 "null means the Hugging Face "
                  "cache where they always were. LM Studio's models go where "
                  "LM Studio's own setting says."),
     }

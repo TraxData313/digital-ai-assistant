@@ -563,10 +563,8 @@ def operation_harness(voice_on: bool = False, sound: bool = False, events=()) ->
         "{{sound_section}}", sound_sections(voice_on, sound, events))
     # The floor is one number in one file. It is written into its instructions
     # from there rather than typed out twice, because the day it moves is
-    # exactly the day nobody remembers to change the other copy. Under an
-    # adapter it is that version's own, read from the version, and the
-    # cached half of its prompt is rebuilt once when it changes.
-    harness = harness.replace("{{floor}}", format(search.floor_now(), ".2f"))
+    # exactly the day nobody remembers to change the other copy.
+    harness = harness.replace("{{floor}}", format(search.FLOOR, ".2f"))
     # And its Spark's ceiling, from the one place it is set, for the same
     # reason: the number it is told and the number the room refuses on
     # have to be one number.
@@ -3170,11 +3168,7 @@ def _apply_search(conn, specs, say=None):
         problems.extend(report["problems"])
 
     out = {"searches": runs, "problems": problems,
-           "floor": search.floor_now(), "model": embed.MODEL,
-           # The stamp once more at the top, for the room's one line. Each
-           # search carries its own, with its base scores and its shadow.
-           "adapter": next((r.get("adapter") for r in runs
-                            if r.get("adapter")), None)}
+           "floor": search.FLOOR, "model": embed.MODEL}
     out["summary"] = _search_summary(runs, len(refused))
     say(out["summary"], "search")
     return out

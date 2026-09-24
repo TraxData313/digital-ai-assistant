@@ -8,7 +8,7 @@ const context = vm.createContext({
   esc: x => String(x ?? '').replaceAll('<', '&lt;'),
   ACT: {native: ['Native Codex activity', 'files']},
   LIVE_LABEL: {native: ['Native Codex activity', 'files']},
-  tidySummary: String, adapterTag: () => '',
+  tidySummary: String,
   eventDetail: e => JSON.stringify(e.detail), stepText: s => JSON.stringify(s.detail),
   actHtml: (key, cls, label, text, detail) => `${label} ${text} ${detail}`,
   msgHtml: () => 'fixture request',

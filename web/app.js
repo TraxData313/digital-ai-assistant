@@ -398,20 +398,10 @@ function searchText(s) {
   }
   lines.push(s.summary);
   for (const h of s.hits || []) {
-    // A shadow hit is the base space's: today's search would have shown
-    // it and the adapted one did not, so it says so and gives its base score.
     lines.push("   " + (h.score === null ? "  —  " : h.score.toFixed(3)) +
-               "  #" + h.id + "  " + (h.title || "(untitled)") + "  [" + h.matched + "]" +
-               (h.shadow ? "  base only" + (h.base_score != null
-                 ? ", " + Number(h.base_score).toFixed(3) + " in the base space" : "") : ""));
+               "  #" + h.id + "  " + (h.title || "(untitled)") + "  [" + h.matched + "]");
   }
   return lines.concat(s.notes || [], s.problems || []).join("\n");
-}
-
-// The version a search ran under, when one was on: a search under v1 and a
-// search under v2 are different searches, and the line says so.
-function adapterTag(kind, d) {
-  return kind === "search" && d && d.adapter ? " · adapter " + d.adapter : "";
 }
 
 function fetchText(d) {
@@ -600,8 +590,7 @@ function recallText(d) {
   const who = "by " + (d.by || d.asked_for || "?") +
     (d.answered_by ? (d.answered_by === d.asked_for ? " (" + d.answered_by + ")" : " — answered by " + d.answered_by) : "");
   out.push(who + (d.took_s != null ? " \u00b7 " + tookText(d) : "") +
-    (d.read ? " \u00b7 read the last " + d.read + " lines" : "") +
-    (d.adapter ? " \u00b7 adapter " + d.adapter : ""));
+    (d.read ? " \u00b7 read the last " + d.read + " lines" : ""));
   if (d.about) out.push("about: " + d.about);
   if (d.query) out.push("searched for: " + d.query);
   if (d.keywords && d.keywords.length) out.push("keywords: " + d.keywords.join(", "));
@@ -798,7 +787,7 @@ function nativeActionHtml(e, grey) {
 function actFromEvent(e, grey) {
   if (e.detail?._nativeGroup) return nativeActionHtml(e, grey);
   const [label, cls] = ACT[e.kind] || [e.kind, e.kind];
-  const text = tidySummary(e.summary) + adapterTag(e.kind, e.detail);
+  const text = tidySummary(e.summary);
   const mono = e.kind === "files" || e.kind === "shelf" || e.kind === "native";
   const download = e.kind === "native" && e.detail && Number.isInteger(e.detail.request_row)
     ? `<a href="api/native-log?row=${e.detail.request_row}" download="native-turn-${e.detail.request_row}.json">Download run log</a>` : "";
@@ -1322,7 +1311,7 @@ function liveStep(s, key, afterReply) {
   if (s.detail && LIVE_LABEL[s.kind]) {
     const [label, cls] = LIVE_LABEL[s.kind];
     const mono = s.kind === "files" || s.kind === "shelf" || s.kind === "native";
-    return actHtml(key, cls, label, tidySummary(s.text) + adapterTag(s.kind, s.detail),
+    return actHtml(key, cls, label, tidySummary(s.text),
                    body(stepText(s), mono));
   }
   if (s.kind === "worker") return actHtml(key, "sent", "Hands", s.text, "");
@@ -1887,8 +1876,7 @@ function devRecall() {
   let html = `<p class="recall-row"><label>model <select id="recall-model">${opts.join("")}</select></label>` +
     `<span class="state ${line.cls}">${esc(line.text.replace(/^automatic memory: /, ""))}</span> ${action}</p>` + bar;
   if (rc.detail) html += `<p class="quiet">${esc(rc.detail)}</p>`;
-  // The query writer: the model above unless another is chosen here. A
-  // writer trained on the shelf appears under the home's slug once imported;
+  // The query writer: the model above unless another is chosen here;
   // the reader and the digest stay on the model whatever is chosen.
   const wopts = [`<option value=""${!rc.writer ? " selected" : ""}>same as the model</option>`].concat(
     (rc.writers || []).filter((w) => w.key !== rc.model).map((w) =>
@@ -2100,7 +2088,7 @@ function devModels() {
       `<button class="small-btn" id="models-move" data-from="${esc(m.leftover.folder)}">move them here</button></p>`;
   }
   html += `<p class="quiet">LM Studio keeps its own in ${esc(m.lm_studio || "a folder it did not tell us")} — its setting, changed in LM Studio under My Models.</p>`;
-  html += `<p class="quiet">The embedder that reads the essences downloads here, and so will anything trained from the shelf. ` +
+  html += `<p class="quiet">The embedder that reads the essences downloads here. ` +
     `A new folder is read from on the next start; what is already downloaded is moved into it on its own.</p>`;
   return html;
 }

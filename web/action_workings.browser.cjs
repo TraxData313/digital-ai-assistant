@@ -27,7 +27,7 @@ const extract = (start, end) => {
       const MAIN = document.getElementById('main'), OPEN = new Set();
       const $ = id => document.getElementById(id);
       const esc = s => String(s ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;');
-      const md = esc, clockOnly = () => '', adapterTag = () => '', tidySummary = s => s;
+      const md = esc, clockOnly = () => '', tidySummary = s => s;
       const LIVE_LABEL = {}, PLAIN_WHAT = {};
       let shown='chat', PLAIN=false, progress={busy:true,turn:123,steps:[],native_active:true};
       let failed=false, state={}, turnStart=Date.now();
