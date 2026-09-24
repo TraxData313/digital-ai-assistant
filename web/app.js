@@ -594,7 +594,8 @@ function recallHead(d) {
   const n = (k) => k + " line" + (k === 1 ? "" : "s");
   return [d.model, d.read_lines ? "writer read the last " + n(d.read_lines) : "",
           d.review_lines ? "reviewer read the last " + n(d.review_lines) : "",
-          d.reviewed_against ? "reviewed against " + d.reviewed_against : "",
+          d.reviewed_against ? "reviewed against " + d.reviewed_against
+            : d.typed && (d.results || []).length ? "not reviewed (the reviewer box was unticked)" : "",
           recallTook(d)].filter(Boolean).join(" \u00b7 ");
 }
 
@@ -2059,7 +2060,7 @@ function devRecallConfig() {
 // Try a search by hand: the automatic memory's own search on what is typed
 // here, drawn with the same card a turn gets. Kept in memory so a redraw of
 // the tab brings back what was typed and what came out.
-const TRY = { essence: "", keywords: "", from: "", to: "", review: false, result: null, busy: false };
+const TRY = { essence: "", keywords: "", from: "", to: "", review: true, result: null, busy: false };
 
 function devRecallSearch() {
   const field = (name, label, ph, wide) =>
@@ -2072,7 +2073,7 @@ function devRecallSearch() {
     field("from", "from", "YYYY-MM-DD") + field("to", "to", "YYYY-MM-DD") + `</div>` +
     `<div class="try-line"><button class="btn" id="try-go"${TRY.busy ? " disabled" : ""}>${TRY.busy ? "searching\u2026" : "search"}</button>` +
     `<label class="quiet"><input type="checkbox" id="try-review"${TRY.review ? " checked" : ""}> ` +
-    `also ask the reviewer whether each one fits what you typed (a few seconds)</label></div>` +
+    `ask the reviewer whether each one fits what you typed (a few seconds; untick for the search alone)</label></div>` +
     `<div id="try-out">${TRY.result ? recallHtml(TRY.result, "try") : ""}</div></div>`;
 }
 
