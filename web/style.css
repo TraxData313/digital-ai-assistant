@@ -496,7 +496,7 @@ details.act > summary { cursor: pointer; }
 }
 .recall-row input { width: 70px; font-variant-numeric: tabular-nums; }
 .recall-row.knobs { gap: 8px 14px; margin-top: 4px; }
-.recall-row.knobs input { width: 62px; }
+.recall-row.knobs input { width: 84px; }
 .recall-row.knobs label[title] { cursor: help; border-bottom: 1px dotted var(--faint); }
 .recall-row select:focus, .recall-row input:focus { outline: none; border-color: var(--ember); }
 .recall-row .state { font-variant-numeric: tabular-nums; }

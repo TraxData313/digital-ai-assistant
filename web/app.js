@@ -2037,7 +2037,7 @@ function devRecall() {
     }
   }
   html += facts([
-    ["how it works", `before each turn: the model looks at a few of ${MY_NAME}'s essences for their style and the last ${kn.lines || 5} lines of the room, and writes an essence-shaped search, keywords and maybe dates. The search returns the top ${kn.top || 3} by likeness and up to ${kn.keyword_top != null ? kn.keyword_top : 2} keyword finds. The model reviews each: a note and how much ${MY_NAME} would want to read it. ${MY_NAME} gets exactly what the fold in the room shows.`],
+    ["how it works", `before each turn: the model looks at a few of ${MY_NAME}'s essences for their style and the last ${kn.lines || 5} lines of the room, and writes an essence-shaped search, keywords and maybe dates. The search returns the top ${kn.top || 3} by likeness and up to ${kn.keyword_top != null ? kn.keyword_top : 2} keyword finds. The model reviews each against the last ${kn.review_lines || 5} lines: a note and how much ${MY_NAME} would want to read it. ${MY_NAME} gets exactly what the fold in the room shows.`],
     ["hosted by", rc.server ? "LM Studio at " + rc.server + " \u2014 the room loads and frees the model, LM Studio runs it" : ""],
     ["model key", rc.model || ""],
     ["embedder", rc.embedder === "warm" ? "warm" : rc.embedder === "warming" ? "warming up (about 13 s the first time)"
