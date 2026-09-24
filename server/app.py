@@ -1480,8 +1480,17 @@ class Handler(BaseHTTPRequestHandler):
         # more.
         if self.path == "/api/recall/choose":
             return self._json(recall.choose(body.get("model")))
-        if self.path == "/api/recall/writer":
-            return self._json(recall.choose_writer(body.get("writer")))
+        # "Show more": the same search a run wrote, further down the list,
+        # without the review. Read-only.
+        if self.path == "/api/recall/more":
+            asked = body.get("asked") or {}
+            if not isinstance(asked, dict) or not (asked.get("essence") or "").strip():
+                return self._json({"error": "no essence to search with"}, 400)
+            conn = db.connect()
+            try:
+                return self._json(recall.more(conn, asked, max(0, int(body.get("skip") or 0))))
+            finally:
+                conn.close()
 
         # Their free notes: one person's text, replaced whole. Signed like a
         # note line in a project -- the same free switch -- because the box
