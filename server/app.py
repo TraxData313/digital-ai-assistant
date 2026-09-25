@@ -883,6 +883,15 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 return self._json({'error': 'Could not load the supported voices. Try again.'}, 503)
 
+        if path == '/api/voice/local-voices':
+            # The voice app's own catalogue, for choosing which one is this
+            # room's. Asked only when that picker opens.
+            try:
+                return self._json({**brain.local_voices(), 'chosen': brain.chosen_voice()})
+            except Exception as exc:
+                return self._json({'error': 'Your voice app is not answering ('
+                                   + type(exc).__name__ + ').'}, 503)
+
         if path == '/api/voice':
             # The native call's own state, plus which road was chosen and what
             # the speak server says about itself. The page needs both in one
@@ -891,6 +900,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({**live_voice.manager.status(),
                                'backend': brain.voice_backend(),
                                'switch': bool(brain.read_voice().get('enabled', True)),
+                               'chosen': brain.chosen_voice(),
                                'local': brain.voice_status()})
 
         if path == '/api/sessions':
@@ -1228,6 +1238,7 @@ class Handler(BaseHTTPRequestHandler):
                     cfg = brain.write_voice(backend=want)
                     return self._json({'backend': want,
                                        'switch': bool(cfg.get('enabled', True)),
+                                       'chosen': brain.chosen_voice(),
                                        'local': brain.voice_status(fresh=True)})
                 elif self.path == '/api/voice/enabled':
                     # The assistant's own voice, on or off, for this room only.
@@ -1238,6 +1249,20 @@ class Handler(BaseHTTPRequestHandler):
                     cfg = brain.write_voice(enabled=bool(body.get('on')))
                     return self._json({'backend': brain.voice_backend(),
                                        'switch': bool(cfg.get('enabled', True)),
+                                       'chosen': brain.chosen_voice(),
+                                       'local': brain.voice_status(fresh=True)})
+                elif self.path == '/api/voice/local-voice':
+                    # Which of the voice app's voices is this room's, or none
+                    # (null) to speak in whichever the app has picked. Kept
+                    # here, so it holds whatever the app is switched to.
+                    want = body.get('voice')
+                    if want is not None and not (isinstance(want, str) and 0 < len(want) <= 80
+                                                 and all(c.isalnum() or c in '_.- ' for c in want)):
+                        raise live_voice.ProbeError("Choose one of the voice app's voices.")
+                    cfg = brain.write_voice(voice=want or 'default')
+                    return self._json({'backend': brain.voice_backend(),
+                                       'switch': bool(cfg.get('enabled', True)),
+                                       'chosen': brain.chosen_voice(),
                                        'local': brain.voice_status(fresh=True)})
                 elif self.path == '/api/voice/stop':
                     return self._json(manager.end(ident, owner, body.get('events', [])))

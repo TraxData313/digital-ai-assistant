@@ -759,6 +759,18 @@ def voice_status(fresh: bool = False) -> dict:
     if not d.get("ready"):
         return remember({"on": False, "backend": backend,
                          "reason": "engine still warming up"})
+    # Its own voice, if it has one, and whether the app can still speak in it.
+    # Switching the app's engine swaps its whole catalogue, and a voice that
+    # is not there refuses every line -- better said here than heard as
+    # silence. A room without one speaks in whatever the app has picked.
+    chosen = chosen_voice()
+    offered = d.get("voices")
+    if chosen and isinstance(offered, list) and offered and not any(
+            isinstance(v, dict) and str(v.get("id", "")).lower() == chosen.lower()
+            for v in offered):
+        return remember({"on": False, "backend": backend, "voice": chosen,
+                         "reason": "the voice app has no voice called '" + chosen + "'"
+                         + (" on " + d["engine"] if d.get("engine") else "")})
     # Whether a mood would actually be performed. The speak server answers for
     # the engine it is about to speak out of, so this is a measurement rather
     # than an assumption -- and when it is false it is told nothing about
@@ -770,8 +782,8 @@ def voice_status(fresh: bool = False) -> dict:
     events = d.get("events")
     events = [e for e in events if isinstance(e, str) and e.strip()][:8] \
         if isinstance(events, list) else []
-    return remember({"on": True, "backend": backend, "voice": d.get("voice"),
-                     "engine": d.get("engine"),
+    return remember({"on": True, "backend": backend, "voice": chosen or d.get("voice"),
+                     "own": bool(chosen), "engine": d.get("engine"),
                      "sound": bool(d.get("instruction")),
                      "events": events,
                      "speaking": bool(d.get("speaking"))})
@@ -849,8 +861,8 @@ def read_voice() -> dict:
 
 # The two roads a word of the assistant's can take out of this room. "local"
 # is its own voice, through the speak server on this machine -- a separate app
-# with its own engine, its own volume and its own picker, so the room offers
-# none of those. "openai" is the live call in the browser, which carries its
+# with its own engine and its own volume, so the room offers neither; only
+# which of the app's voices is this room's. "openai" is the live call in the browser, which carries its
 # own audio and its own microphone and has nothing to do with the speak server.
 #
 # One room, one answer: the choice lives here and not in a browser, because it
@@ -863,6 +875,44 @@ def voice_backend() -> str:
     """Whose voice speaks its lines. Its own unless somebody chose otherwise."""
     want = read_voice().get("backend")
     return want if want in BACKENDS else "local"
+
+
+# The words that mean "no voice of its own": whatever the voice app has picked
+# speaks for it. "default" is what a new home starts with -- and the speak
+# server knows no voice by that name, so sending it on refused every line.
+FOLLOW_APP = ("", "default")
+
+
+def chosen_voice() -> str | None:
+    """The voice app's voice this room speaks in, or None to speak in whichever
+    one the app has picked. A room with its own keeps it however the app is
+    set: one assistant can be heard as itself while the app wears another."""
+    want = read_voice().get("voice")
+    if not isinstance(want, str) or want.strip().lower() in FOLLOW_APP:
+        return None
+    return want.strip()
+
+
+def local_voices() -> dict:
+    """The voice app's catalogue for the engine it is speaking with, for the
+    room's picker. Asked when the picker opens, never per turn.
+
+    Its /state list rather than /voices, because that one says which voices
+    are `added` -- a game's people, from a folder that is not the app's own
+    -- and those are the ninety the picker folds away under the few that are
+    somebody's."""
+    import urllib.request
+
+    req = urllib.request.Request(
+        "http://127.0.0.1:" + str(read_voice().get("port", 8765)) + "/state",
+        data=b"{}", headers={"Content-Type": "application/json"})
+    got = json.loads(urllib.request.urlopen(req, timeout=4).read() or b"{}")
+    rows = got.get("voices") if isinstance(got.get("voices"), list) else []
+    return {"engine": got.get("engine"), "app": got.get("voice"),
+            "voices": [{"id": str(v["id"]), "name": str(v.get("name") or v["id"]),
+                        "sex": v.get("sex") or "", "tag": v.get("tag") or "",
+                        "added": bool(v.get("added"))}
+                       for v in rows if isinstance(v, dict) and v.get("id")]}
 
 
 def write_voice(**changes) -> dict:
@@ -912,14 +962,17 @@ def say_aloud(text: str, queue: bool = False, sound: str | None = None) -> dict:
         return {"spoken": False, "reason": "nothing to say"}
 
     # No "source" -- that field picks how the voice is built, not who is
-    # talking. "project" is the label the app speaks and draws.
-    body = json.dumps({
+    # talking. "project" is the label the app speaks and draws. No "voice"
+    # when the room has none of its own, and the app speaks in its current one.
+    said = {
         "text": text,
-        "voice": cfg.get("voice") or "default",
         "project": cfg.get("project", home.VOICE_PROJECT),
         "queue": bool(queue),
         "instruction": (sound or "").strip()[:200],
-    }).encode("utf-8")
+    }
+    if chosen_voice():
+        said["voice"] = chosen_voice()
+    body = json.dumps(said).encode("utf-8")
     req = urllib.request.Request(
         f"http://127.0.0.1:{cfg.get('port', 8765)}/speak",
         data=body, headers={"Content-Type": "application/json"})

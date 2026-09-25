@@ -5,7 +5,7 @@
   "port": 8765,
   "voice": "default",
   "backend": "local",
-  "note": "The local claude-voice speak server, if this machine has one. Off in a new home."
+  "note": "The local claude-voice speak server, if this machine has one. Off in a new home. voice is which of its voices is this assistant's; \"default\" speaks in whichever one the app has picked. Chosen from the voice picker on the page."
  },
  "watch.json": {
   "per_day": 40,

@@ -14,6 +14,11 @@
   // room, one voice, whether the reader is at the desk or on a phone. `app` is the last
   // reading of the speak server, `appSwitch` the room's own on/off for it.
   let backend='local', app=null, appSwitch=true, appBusy=false, appTimer=null;
+  // Which of the voice app's voices is this room's: an id, or null to speak in
+  // whichever the app has picked. The room's answer again, not this browser's.
+  // `localVoices` is the app's catalogue, asked for when the picker opens.
+  let chosen=null, localVoices=[], loadingLocal=null, localError=null;
+  const localMenu=el('voice-local-menu');
   try { const saved=localStorage.getItem(volumeKey); if(saved!==null&&Number.isFinite(Number(saved)))volume=Math.max(0,Math.min(100,Number(saved))); } catch {}
   const enqueue = work => { const next=serial.then(work,work); serial=next.catch(()=>{}); return next; };
   const selectedName = () => voices.find(voice=>voice.id===selected)?.name || 'Choose a voice';
@@ -56,7 +61,25 @@
   // The local road has one switch and one sentence. The switch is the room's,
   // not the voice app's -- the app's own is shared with everything else on this
   // machine, and quieting the assistant here must not silence anything else.
+  function voiceName(id) {
+    const hit=localVoices.find(v=>v.id.toLowerCase()===String(id).toLowerCase());
+    return hit?hit.name:String(id).replace(/[_-]+/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+  }
+  function localPicker() {
+    const own=chosen?voiceName(chosen):null, now=app?.voice?voiceName(app.voice):null;
+    controls.picker.textContent=own?own.slice(0,3):'App';
+    const label=own?N+'’s voice: '+own:N+' speaks in your voice app’s voice'+(now?' ('+now+')':'');
+    controls.picker.setAttribute('aria-label',label+' · choose');controls.picker.title=label+' · choose';
+    el('voice-local-hint').textContent=localError||(!localVoices.length&&loadingLocal?'Asking your voice app…':
+      own?N+' speaks as '+own+', whatever your voice app is set to.':
+      'Following your voice app'+(now?': '+now+' right now.':'.'));
+    for(const button of localMenu.querySelectorAll('button[data-voice]')){
+      button.disabled=appBusy;
+      button.setAttribute('aria-pressed',String(button.dataset.voice===(chosen||'').toLowerCase()));
+    }
+  }
   function localState() {
+    localPicker();
     controls.start.disabled=appBusy;
     controls.start.setAttribute('aria-pressed',String(appSwitch));
     const title=appSwitch?'Turn '+N+'’s voice off':'Turn '+N+'’s voice on';
@@ -67,7 +90,7 @@
     if(!appSwitch)text=N+'’s voice is off.';
     else if(!app)text='Asking your voice app…';
     else if(app.on){
-      text=N+'’s voice is on'+(app.engine?', through '+app.engine:'')+'.';
+      text=N+'’s voice is on'+(app.voice?', as '+voiceName(app.voice):'')+(app.engine?', through '+app.engine:'')+'.';
       // Only worth saying when it is true, and it is the whole reason the
       // engine is named at all: on some engines the assistant can say how a
       // line should land, and on Breeze it can laugh in the middle of one.
@@ -106,12 +129,13 @@
   }
   function togglePopover(popover,anchor) {
     if(popover.matches(':popover-open')){popover.hidePopover();return;}
-    for(const other of [controls.menu,controls['volume-panel']])if(other!==popover&&other.matches(':popover-open'))other.hidePopover();
+    for(const other of [controls.menu,controls['volume-panel'],localMenu])if(other!==popover&&other.matches(':popover-open'))other.hidePopover();
     popover.showPopover();positionPopover(popover,anchor);
-    if(popover===controls.menu)(controls.options.querySelector('[aria-pressed="true"]:not(:disabled)')||controls.options.querySelector('button:not(:disabled)')||(!controls.retry.hidden?controls.retry:controls.menu)).focus();
+    if(popover===localMenu)(localMenu.querySelector('[aria-pressed="true"]:not(:disabled)')||localMenu.querySelector('button:not(:disabled)')||localMenu).focus();
+    else if(popover===controls.menu)(controls.options.querySelector('[aria-pressed="true"]:not(:disabled)')||controls.options.querySelector('button:not(:disabled)')||(!controls.retry.hidden?controls.retry:controls.menu)).focus();
     else controls.volume.focus();
   }
-  for(const [popover,anchor] of [[controls.menu,controls.picker],[controls['volume-panel'],controls['volume-toggle']]]) {
+  for(const [popover,anchor] of [[controls.menu,controls.picker],[localMenu,controls.picker],[controls['volume-panel'],controls['volume-toggle']]]) {
     popover.addEventListener('toggle',()=>anchor.setAttribute('aria-expanded',String(popover.matches(':popover-open'))));
     addEventListener('resize',()=>{if(popover.matches(':popover-open'))positionPopover(popover,anchor);});
   }
@@ -145,6 +169,57 @@
     })();
     try{await loadingVoices;}finally{loadingVoices=null;}
   }
+  // The voice app's voices. Its own few first -- the ones that are somebody --
+  // and a game's worth folded under them, a row to each people.
+  function localButton(id,name,swatch) {
+    const button=document.createElement('button');button.type='button';button.dataset.voice=id.toLowerCase();
+    if(swatch!==undefined){
+      const round=document.createElement('span');round.className='voice-swatch';round.textContent=swatch;round.setAttribute('aria-hidden','true');
+      const label=document.createElement('span');label.textContent=name;button.append(round,label);
+    } else button.textContent=name;
+    button.onclick=()=>chooseLocal(id||null);
+    return button;
+  }
+  async function loadLocalVoices() {
+    if(loadingLocal)return loadingLocal;
+    el('voice-local-retry').hidden=true;
+    loadingLocal=(async()=>{
+      try {
+        const response=await fetch('api/voice/local-voices'), result=await response.json();
+        if(!response.ok)throw Error(result.error||'Your voice app is not answering.');
+        localVoices=Array.isArray(result.voices)?result.voices:[];localError=null;
+        if('chosen' in result)chosen=result.chosen;
+        const own=localVoices.filter(v=>!v.added), others=localVoices.filter(v=>v.added);
+        el('voice-local-options').replaceChildren(localButton('','Voice app’s choice','App'),
+          ...own.map(v=>localButton(v.id,v.name,v.name.slice(0,3))));
+        const groups=new Map();
+        for(const v of others){const tag=v.tag||'Others';if(!groups.has(tag))groups.set(tag,[]);groups.get(tag).push(v);}
+        el('voice-local-others').replaceChildren(...[...groups].flatMap(([tag,rows])=>{
+          const head=document.createElement('h4');head.textContent=tag;
+          const row=document.createElement('div');row.className='voice-row';
+          // "Aserai Female Curt" under "Aserai" is "Female Curt".
+          row.append(...rows.map(v=>localButton(v.id,v.name.startsWith(tag+' ')?v.name.slice(tag.length+1):v.name)));
+          return [head,row];
+        }));
+        const more=el('voice-local-more');
+        more.hidden=!others.length;
+        more.querySelector('summary').textContent='More voices ('+others.length+')';
+        if(chosen&&others.some(v=>v.id.toLowerCase()===chosen.toLowerCase()))more.open=true;
+      } catch(error) {
+        el('voice-local-options').replaceChildren();el('voice-local-more').hidden=true;
+        localError=error.message;el('voice-local-retry').hidden=false;
+      }
+    })();
+    try{await loadingLocal;}finally{loadingLocal=null;choiceState();}
+    if(localMenu.matches(':popover-open'))positionPopover(localMenu,controls.picker);
+  }
+  async function chooseLocal(id) {
+    if(appBusy)return;
+    appBusy=true;choiceState();
+    try {localError=null;absorbVoice(await api('local-voice',{voice:id}));localMenu.hidePopover();controls.picker.focus();}
+    catch(error) {localError=error.message;}
+    finally {appBusy=false;choiceState();}
+  }
   controls.options.onkeydown=event=>{
     const buttons=[...controls.options.querySelectorAll('button:not(:disabled)')],index=buttons.indexOf(document.activeElement);
     const steps={ArrowRight:1,ArrowLeft:-1,ArrowDown:3,ArrowUp:-3};
@@ -168,6 +243,7 @@
     if(result.backend)backend=result.backend;
     if(result.local)app=result.local;
     if(typeof result.switch==='boolean')appSwitch=result.switch;
+    if('chosen' in result)chosen=result.chosen;
     choiceState();
   }
   async function loadApp() {
@@ -333,7 +409,13 @@
     s.mic.getAudioTracks().forEach(track=>track.enabled=!s.muted);micState();
     if(controls.sound.hidden)readyMessage(s);
   };
-  controls.picker.onclick=()=>togglePopover(controls.menu,controls.picker);
+  controls.picker.onclick=()=>{
+    if(backend!=='local')return togglePopover(controls.menu,controls.picker);
+    const opening=!localMenu.matches(':popover-open');
+    togglePopover(localMenu,controls.picker);
+    if(opening)loadLocalVoices();
+  };
+  el('voice-local-retry').onclick=loadLocalVoices;
   controls['volume-toggle'].onclick=()=>{
     if(!controls.sound.hidden&&current)playAudio(current);
     togglePopover(controls['volume-panel'],controls['volume-toggle']);

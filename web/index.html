@@ -123,9 +123,18 @@
       <audio id="voice-audio" hidden></audio>
       <div id="voice-menu" class="voice-popover" popover role="dialog" tabindex="-1" aria-label="Choose a voice">
         <div class="voice-popover-title">Choose a voice</div>
-        <div id="voice-options" role="group" aria-label="Supported voices"></div>
+        <div id="voice-options" class="voice-grid" role="group" aria-label="Supported voices"></div>
         <p id="voice-choice-hint" role="status">Loading voices…</p>
         <button id="voice-retry" type="button" hidden>Try again</button>
+      </div>
+      <!-- The voice app's voices, for the local road: which one is this
+           room's, whatever the app itself is set to. -->
+      <div id="voice-local-menu" class="voice-popover" popover role="dialog" tabindex="-1" aria-label="Choose {{name}}'s voice">
+        <div class="voice-popover-title">{{name}}'s voice</div>
+        <div id="voice-local-options" class="voice-grid" role="group" aria-label="Your voice app's voices"></div>
+        <details id="voice-local-more" class="voice-more" hidden><summary></summary><div id="voice-local-others"></div></details>
+        <p id="voice-local-hint" role="status">Asking your voice app…</p>
+        <button id="voice-local-retry" type="button" hidden>Try again</button>
       </div>
       <div id="voice-volume-panel" class="voice-popover" popover role="dialog" aria-label="Voice volume">
         <div class="voice-popover-title"><label for="voice-volume">Volume</label><output id="voice-volume-value" for="voice-volume">100%</output></div>

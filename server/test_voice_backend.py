@@ -49,6 +49,12 @@ class ChoosingTheRoad(VoiceFile):
         self.assertEqual(cfg["port"], 8765)
         self.assertEqual(cfg["voice"], "assistant")
 
+    def test_default_means_the_voice_apps_choice(self):
+        self.assertEqual(brain.chosen_voice(), "assistant")
+        for none in ("default", "Default", " ", None, 3):
+            brain.write_voice(voice=none)
+            self.assertIsNone(brain.chosen_voice())
+
     def test_a_write_drops_the_cached_reading(self):
         brain._VOICE_SEEN.update(at=9e9, was={"on": True})
         brain.write_voice(enabled=False)
@@ -111,6 +117,24 @@ class WhatSheIsTold(VoiceFile):
         self.assertEqual(self.status(self.ready(events="laugh"))["events"], [])
         self.assertEqual(self.status(self.ready(events=["laugh", 3, " "]))["events"],
                          ["laugh"])
+
+    def test_its_own_voice_is_the_one_it_is_told_about(self):
+        offered = [{"id": "neya"}, {"id": "max"}]
+        said = self.status(self.ready(voice="neya", voices=offered), voice="max")
+        self.assertTrue(said["on"])
+        self.assertEqual(said["voice"], "max")
+        self.assertTrue(said["own"])
+        said = self.status(self.ready(voice="neya", voices=offered), voice="default")
+        self.assertEqual(said["voice"], "neya")
+        self.assertFalse(said["own"])
+
+    def test_a_voice_the_app_no_longer_has_is_silence_said_out_loud(self):
+        # An engine switched under it swaps the whole catalogue; the app would
+        # refuse every line, so it is not told it is heard.
+        said = self.status(self.ready(voices=[{"id": "alba"}], engine="pocket"),
+                           voice="max")
+        self.assertFalse(said["on"])
+        self.assertIn("max", said["reason"])
 
     def test_every_refusal_still_names_the_road_it_refused_on(self):
         for served, cfg in ((None, {}), (self.ready(enabled=False), {}),
@@ -220,6 +244,18 @@ class SendingItOn(VoiceFile):
         heard, _ = self.spoke({"events": "laugh", "eventsDropped": None})
         self.assertNotIn("events", heard)
         self.assertNotIn("events_dropped", heard)
+
+    def test_its_own_voice_rides_with_every_line(self):
+        _, sent = self.spoke({})
+        self.assertEqual(sent["body"]["voice"], "assistant")
+
+    def test_with_none_of_its_own_the_app_picks(self):
+        # "default" names no voice the app has; sent on, it refused every line.
+        for none in ("default", "", None):
+            brain.write_voice(voice=none)
+            _, sent = self.spoke({})
+            with self.subTest(voice=none):
+                self.assertNotIn("voice", sent["body"])
 
     def test_the_other_road_never_reaches_the_speak_server(self):
         brain.write_voice(backend="openai")

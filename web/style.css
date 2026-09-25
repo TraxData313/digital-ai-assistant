@@ -1392,11 +1392,11 @@ a.res-val:hover { color: var(--ink); }
 #voice-backend:focus-visible { outline:2px solid var(--self); outline-offset:3px; }
 #voice-backend option { color:var(--ink); background:#22251f; }
 #voice-tools[data-backend="local"] #voice-backend { color:var(--self); }
-/* The local road: the voice app owns the microphone, the volume and the picker,
-   so this bar stops pretending to. Hidden rather than disabled -- a control
-   that decides nothing is not worth a greyed-out place on a phone. */
+/* The local road: the voice app owns the microphone and the volume, so this
+   bar stops pretending to. Hidden rather than disabled -- a control that
+   decides nothing is not worth a greyed-out place on a phone. The picker
+   stays: which of the app's voices is this room's is the room's to say. */
 #voice-tools[data-backend="local"] #voice-mute,
-#voice-tools[data-backend="local"] #voice-picker,
 #voice-tools[data-backend="local"] #voice-volume-toggle,
 #voice-tools[data-backend="local"] .voice-divider { display:none; }
 #voice-status { margin:5px 3px 0; font-size:13px; line-height:1.4; color:var(--dim); overflow-wrap:anywhere; }
@@ -1416,19 +1416,28 @@ a.res-val:hover { color: var(--ink); }
 .voice-popover { position:fixed; inset:auto; box-sizing:border-box; margin:0; width:252px; max-width:calc(100vw - 20px); max-height:60vh; overflow:auto; padding:16px; border:1px solid rgba(212,219,204,.2); border-radius:18px; color:var(--ink); background:#22251f; box-shadow:0 12px 42px rgba(0,0,0,.4); font:14px/1.4 system-ui,sans-serif; }
 .voice-popover::backdrop { background:transparent; }
 .voice-popover-title { display:flex; justify-content:space-between; gap:12px; font-size:12px; font-weight:600; color:var(--dim); margin-bottom:14px; }
-#voice-options { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; }
-#voice-options button { display:flex; flex-direction:column; align-items:center; gap:6px; padding:9px 2px; color:var(--dim); background:transparent; border:1px solid transparent; border-radius:12px; font:12px/1.2 system-ui,sans-serif; cursor:pointer; }
-#voice-options .voice-swatch { display:grid; place-items:center; width:34px; height:34px; border-radius:50%; background:radial-gradient(circle at 30% 20%,#edf0e7,#b4cbc7 65%,#829a9a); color:#253331; font-size:10px; font-weight:600; }
-#voice-options button:nth-child(3n+2) .voice-swatch { background:radial-gradient(circle at 30% 20%,#f4e5d6,#d5c2ad 65%,#a5998c); }
-#voice-options button:nth-child(3n) .voice-swatch { background:radial-gradient(circle at 30% 20%,#f0e7f3,#c1b7d4 65%,#9592b4); }
-#voice-options button:hover:not(:disabled) { background:rgba(255,255,255,.05); color:var(--ink); }
-#voice-options button[aria-pressed="true"] { border-color:rgba(129,222,210,.45); background:rgba(129,222,210,.07); color:var(--self); }
-#voice-options button:disabled { cursor:default; opacity:.5; }
-#voice-choice-hint { font-size:12px; color:var(--dim); margin:12px 0 0; }
+.voice-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; }
+.voice-grid button { display:flex; flex-direction:column; align-items:center; gap:6px; padding:9px 2px; color:var(--dim); background:transparent; border:1px solid transparent; border-radius:12px; font:12px/1.2 system-ui,sans-serif; cursor:pointer; }
+.voice-grid .voice-swatch { display:grid; place-items:center; width:34px; height:34px; border-radius:50%; background:radial-gradient(circle at 30% 20%,#edf0e7,#b4cbc7 65%,#829a9a); color:#253331; font-size:10px; font-weight:600; }
+.voice-grid button:nth-child(3n+2) .voice-swatch { background:radial-gradient(circle at 30% 20%,#f4e5d6,#d5c2ad 65%,#a5998c); }
+.voice-grid button:nth-child(3n) .voice-swatch { background:radial-gradient(circle at 30% 20%,#f0e7f3,#c1b7d4 65%,#9592b4); }
+.voice-grid button:hover:not(:disabled), .voice-more button:hover:not(:disabled) { background:rgba(255,255,255,.05); color:var(--ink); }
+.voice-grid button[aria-pressed="true"], .voice-more button[aria-pressed="true"] { border-color:rgba(129,222,210,.45); background:rgba(129,222,210,.07); color:var(--self); }
+.voice-grid button:disabled, .voice-more button:disabled { cursor:default; opacity:.5; }
+/* The rest of the voice app's voices -- a game's worth of them -- folded away
+   under the few that are somebody's own, a small word each under its people. */
+#voice-local-menu { width:300px; }
+.voice-more { margin-top:12px; font-size:12px; color:var(--dim); }
+.voice-more summary { cursor:pointer; padding:4px 0; }
+.voice-more summary:hover { color:var(--ink); }
+.voice-more h4 { margin:10px 0 4px; font-size:11px; font-weight:600; letter-spacing:.03em; color:var(--dim); }
+.voice-more .voice-row { display:flex; flex-wrap:wrap; gap:4px; }
+.voice-more button { padding:4px 8px; color:var(--dim); background:transparent; border:1px solid var(--line); border-radius:10px; font:11.5px/1.2 system-ui,sans-serif; cursor:pointer; }
+#voice-choice-hint, #voice-local-hint { font-size:12px; color:var(--dim); margin:12px 0 0; }
 #voice-volume-panel { width:220px; }
 #voice-volume-panel .voice-popover-title { margin-bottom:8px; }
 #voice-volume { display:block; width:100%; height:28px; margin:0; accent-color:var(--self); cursor:pointer; }
-#voice-retry, #voice-sound { border:1px solid var(--line); border-radius:8px; color:var(--self); background:transparent; font:inherit; padding:6px 10px; margin-top:10px; cursor:pointer; }
+#voice-retry, #voice-local-retry, #voice-sound { border:1px solid var(--line); border-radius:8px; color:var(--self); background:transparent; font:inherit; padding:6px 10px; margin-top:10px; cursor:pointer; }
 @media (max-width:700px) {
   .composer { display:grid; grid-template-columns:34px minmax(0,1fr) auto; grid-template-areas:"attach input send" ". voice voice"; gap:8px; }
   #attach { grid-area:attach; }
