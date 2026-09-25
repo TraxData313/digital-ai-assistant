@@ -2002,6 +2002,21 @@ function devPlan() {
   ]);
 }
 
+// The automatic memory's knobs: the name the room keeps it by, its label,
+// the keys a phone offers for it, and what it does.
+const RECALL_KNOBS = [
+  ["timeout_s", "hard limit, s", "decimal", "a turn never waits longer than this for it; when it misses, the turn goes ahead without it"],
+  ["lines", "writer reads, lines", "numeric", "how many of the last lines of the room the writer reads to write its search"],
+  ["review_lines", "reviewer reads, lines", "numeric", "how many of the last lines of the room the reviewer reads to judge each result against"],
+  ["top", "top by likeness", "numeric", "how many of the closest essences are shown and reviewed"],
+  ["keyword_top", "keyword finds", "numeric", "how many essences found by keyword are added, when they are not already among the top"],
+  ["read_chars", "reviewer reads, chars", "numeric", "how much of each result the reviewer reads, from the top"],
+];
+// What the knobs last said -- saved, or why not -- and the saves, each one
+// behind the last, so Enter, a click away and a button never cross.
+let KNOB_SAYS = null;
+let KNOB_SAVE = Promise.resolve();
+
 // The automatic memory's own section: the dropdown, its state with the
 // download and load buttons, the hard limit, and a try-it-now.
 function devRecall() {
@@ -2031,21 +2046,25 @@ function devRecall() {
     `<span class="state ${line.cls}">${esc(line.text.replace(/^automatic memory: /, ""))}</span> ${action}</p>` + bar;
   if (rc.detail) html += `<p class="quiet">${esc(rc.detail)}</p>`;
   const kn = rc.knobs || {}, kb = rc.knob_bounds || {};
-  const knob = (name, label, step, title) => {
+  // A number typed and not yet saved is kept through every redraw -- each
+  // turn redraws this section -- and wears ember until it is saved, so it
+  // can never pass for the one the room is using. Text boxes, not number
+  // boxes, so a mouse wheel passing over one cannot move it.
+  const drafts = knobDrafts();
+  const open = Object.keys(drafts).length > 0;
+  const says = KNOB_SAYS && (KNOB_SAYS.bad ? open : Date.now() < KNOB_SAYS.until) ? KNOB_SAYS : null;
+  html += `<p class="recall-row knobs">` + RECALL_KNOBS.map(([name, label, keys, title]) => {
     const b = kb[name] || {};
-    return `<label title="${esc(title)}">${label} <input class="knob" data-knob="${name}" type="number" ` +
-      `min="${b.min != null ? b.min : ""}" max="${b.max != null ? b.max : ""}" step="${step}" ` +
-      `value="${kn[name] != null ? kn[name] : ""}"></label>`;
-  };
-  html += `<p class="recall-row knobs">` +
-    knob("timeout_s", "hard limit, s", "1", "a turn never waits longer than this for it; when it misses, the turn goes ahead without it") +
-    knob("lines", "writer reads, lines", "1", "how many of the last lines of the room the writer reads to write its search") +
-    knob("review_lines", "reviewer reads, lines", "1", "how many of the last lines of the room the reviewer reads to judge each result against") +
-    knob("top", "top by likeness", "1", "how many of the closest essences are shown and reviewed") +
-    knob("keyword_top", "keyword finds", "1", "how many essences found by keyword are added, when they are not already among the top") +
-    knob("read_chars", "reviewer reads, chars", "100", "how much of each result the reviewer reads, from the top") +
-    `<button class="small-btn" id="recall-knobs-set">set</button>` +
-    `<button class="small-btn" id="recall-knobs-reset" title="back to the defaults">defaults</button></p>`;
+    const saved = kn[name] != null ? String(kn[name]) : "";
+    const draft = drafts[name];
+    const range = b.min != null ? ` (${b.min}\u2013${b.max})` : "";
+    return `<label title="${esc(title + range)}; Enter or a click away saves it, Esc puts it back">${label} ` +
+      `<input class="knob${draft != null ? " draft" : ""}" data-knob="${name}" type="text" inputmode="${keys}" ` +
+      `autocomplete="off" spellcheck="false" data-saved="${esc(saved)}" value="${esc(draft != null ? draft : saved)}"></label>`;
+  }).join("") +
+    `<button class="small-btn knob-save" id="recall-knobs-set" type="button"${open ? "" : " hidden"}>save</button>` +
+    `<button class="small-btn" id="recall-knobs-reset" type="button" title="back to the defaults">defaults</button>` +
+    (says ? `<span class="knob-says ${says.bad ? "bad" : "good"}">${esc(says.text)}</span>` : "") + `</p>`;
   html += `<p class="recall-row"><button class="btn" id="recall-try"${rc.model && rc.phase === "loaded" ? "" : " disabled"}>ask it now</button>` +
     `<span class="quiet" id="recall-try-note">runs it on the room as it stands \u2014 shown here, kept nowhere</span></p>`;
   const last = rc.last;
@@ -2069,6 +2088,82 @@ function devRecall() {
       : rc.embedder === "unavailable" ? "unavailable \u2014 the search cannot run" : "cold \u2014 warms when a model is chosen"],
   ]);
   return html;
+}
+
+// The knobs whose box holds a number the room is not using, {name: typed}.
+// Read off the boxes themselves, so a redraw can put them back.
+function knobDrafts() {
+  const out = {};
+  for (const el of MAIN.querySelectorAll("input.knob")) {
+    const typed = String(el.value).trim();
+    if (typed !== String(el.dataset.saved || "")) out[el.dataset.knob] = typed;
+  }
+  return out;
+}
+
+// The ember and the save button, straight on the boxes: the row is not
+// redrawn while somebody is in it.
+function markKnobs() {
+  const drafts = knobDrafts();
+  for (const el of MAIN.querySelectorAll("input.knob")) el.classList.toggle("draft", el.dataset.knob in drafts);
+  const save = $("recall-knobs-set");
+  if (save) save.hidden = !Object.keys(drafts).length;
+}
+
+// Saved the moment it is meant: Enter, a click anywhere else, or the save
+// button. A number typed and walked away from used to sit in its box looking
+// saved, until the next turn redrew the row with the old one and the run
+// went on using it. `reset` puts every knob back to its default instead.
+function saveKnobs(reset = false) {
+  const run = KNOB_SAVE.then(() => saveKnobsNow(reset));
+  KNOB_SAVE = run.catch(() => {});
+  return run;
+}
+
+async function saveKnobsNow(reset) {
+  const label = (name) => (RECALL_KNOBS.find((k) => k[0] === name) || [, name])[1];
+  const body = reset ? { reset: true } : {}, sent = new Map(), bad = [];
+  if (!reset) {
+    for (const el of MAIN.querySelectorAll("input.knob")) {
+      const typed = String(el.value).trim();
+      // Unchanged, or still being typed in: that one waits for its own
+      // Enter or click away.
+      if (typed === String(el.dataset.saved || "") || el === document.activeElement) continue;
+      if (typed === "") el.value = el.dataset.saved;    // emptied and left: as it was
+      else if (!Number.isFinite(Number(typed))) bad.push(label(el.dataset.knob) + ": \u201c" + typed + "\u201d is not a number");
+      else { body[el.dataset.knob] = Number(typed); sent.set(el, typed); }
+    }
+  }
+  if (bad.length) KNOB_SAYS = { text: bad.join(" \u00b7 "), bad: true };
+  if (reset || sent.size) {
+    try {
+      const got = await post("api/recall/settings", body);
+      if (progress) progress.recall = got;
+      const kept = got.knobs || {}, kb = got.knob_bounds || {}, held = [];
+      for (const el of MAIN.querySelectorAll("input.knob")) {
+        const name = el.dataset.knob, now = String(kept[name]);
+        if (!reset && !sent.has(el)) continue;
+        // A box typed in again while this was on its way keeps the new number.
+        if (reset || String(el.value).trim() === sent.get(el)) el.value = now;
+        el.dataset.saved = now;
+        // The room holds each knob to its bounds and a count to a whole one.
+        if (!reset && Number(now) !== body[name]) {
+          const b = kb[name] || {};
+          held.push(label(name) + ": " + now + (Number(now) === b.max ? ", the most it takes"
+            : Number(now) === b.min ? ", the least it takes" : ""));
+        }
+      }
+      if (!bad.length) {
+        KNOB_SAYS = { text: reset ? "back to the defaults" : "saved" + (held.length ? " \u2014 " + held.join(" \u00b7 ") : ""),
+                      until: Date.now() + 4000 };
+        setTimeout(paintRecall, 4100);
+      }
+    } catch (e) {
+      KNOB_SAYS = { text: String(e.message || e), bad: true };
+    }
+  }
+  markKnobs();
+  paintRecall();
 }
 
 // The prompt file, raw. Its own piece, redrawn only when the file changes:
@@ -2157,25 +2252,18 @@ function wireRecall() {
     sel.blur();
     renderRecall(); paintRecall();
   };
+  for (const el of MAIN.querySelectorAll("input.knob")) {
+    el.oninput = markKnobs;
+    el.onchange = () => saveKnobs();
+    el.onkeydown = (e) => {
+      if (e.key === "Enter") { e.preventDefault(); el.blur(); saveKnobs(); }
+      if (e.key === "Escape") { el.value = el.dataset.saved; KNOB_SAYS = null; markKnobs(); el.blur(); paintRecall(); }
+    };
+  }
   const set = $("recall-knobs-set");
-  if (set) set.onclick = async () => {
-    const body = {};
-    for (const el of MAIN.querySelectorAll("input.knob")) body[el.dataset.knob] = Number(el.value);
-    try {
-      const got = await post("api/recall/settings", body);
-      if (progress) progress.recall = got;
-    } catch (e) { alert(e.message); }
-    if (document.activeElement) document.activeElement.blur();
-    paintRecall();
-  };
+  if (set) set.onclick = () => saveKnobs();
   const reset = $("recall-knobs-reset");
-  if (reset) reset.onclick = async () => {
-    try {
-      const got = await post("api/recall/settings", { reset: true });
-      if (progress) progress.recall = got;
-    } catch (e) { alert(e.message); }
-    paintRecall();
-  };
+  if (reset) reset.onclick = () => saveKnobs(true);
   for (const [id, url] of [["recall-download", "api/recall/download"], ["recall-load", "api/recall/load"]]) {
     const b = $(id);
     if (b) b.onclick = async () => {
@@ -2192,6 +2280,8 @@ function wireRecall() {
     t.disabled = true;
     $("recall-try-note").textContent = "asking\u2026";
     try {
+      // A number typed just before is the one it runs with.
+      await saveKnobs();
       await post("api/recall/try");
       await pollProgress();
     } catch (e) { $("recall-try-note").textContent = String(e.message || e); t.disabled = false; return; }

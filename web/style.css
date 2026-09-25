@@ -507,6 +507,14 @@ details.act > summary { cursor: pointer; }
 .recall-row.knobs input { width: 84px; }
 .recall-row.knobs label[title] { cursor: help; border-bottom: 1px dotted var(--faint); }
 .recall-row select:focus, .recall-row input:focus { outline: none; border-color: var(--ember); }
+/* A knob typed and not saved yet: ember, like the notebook's cap, with its
+   save button beside it; and a word once it is saved, or why it was not. */
+.recall-row.knobs input.draft { border-color: var(--ember); box-shadow: 0 0 0 1px var(--ember); }
+.recall-row .knob-save { background: var(--ember); border-color: var(--ember); color: #1a1310; font-weight: 600; }
+.recall-row .knob-save:hover { color: #1a1310; filter: brightness(1.08); }
+.recall-row .knob-save[hidden] { display: none; }
+.recall-row .knob-says { font-size: 14px; color: var(--mint); }
+.recall-row .knob-says.bad { color: var(--bad); }
 .recall-row .state { font-variant-numeric: tabular-nums; }
 .recall-row .state.on { color: var(--mint); }
 .recall-row .state.busy { color: var(--essence); }
