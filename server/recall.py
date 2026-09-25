@@ -91,8 +91,13 @@ MORE = 10
 CONTEXT = 8192
 MAX_OUT = 600
 
-# How often the room re-asks LM Studio whether the model is still there.
+# How often the room re-asks LM Studio whether the model is still there, and
+# only while a page is open on it: every ten seconds while something is
+# changing -- LM Studio down, the model on disk and not in memory, a load
+# that failed -- and once a minute while it is loaded, when the only news
+# would be LM Studio letting it go.
 RECHECK_S = 10.0
+RECHECK_LOADED_S = 60.0
 # A download LM Studio calls complete can take a moment to show in its list.
 APPEAR_S = 90.0
 
@@ -388,11 +393,14 @@ def load_now() -> dict:
 
 
 def refresh(force: bool = False):
-    """Catch up with what LM Studio actually has, at most every RECHECK_S."""
+    """Catch up with what LM Studio actually has, at most every RECHECK_S,
+    or RECHECK_LOADED_S while the model is loaded. Called for a page that is
+    open on the room; see `status`."""
     with LOCK:
         key = STATE["model"]
         phase = STATE["phase"]
-        due = force or (time.time() - STATE["checked"]) > RECHECK_S
+        every = RECHECK_LOADED_S if phase == "loaded" else RECHECK_S
+        due = force or (time.time() - STATE["checked"]) > every
     if not key or not due or phase in ("loading", "downloading", "working", "checking"):
         return
     if not SWITCH.acquire(blocking=False):
@@ -1011,8 +1019,10 @@ def try_now(conn) -> dict:
 
 
 def status() -> dict:
-    """What the header and the Developer section show."""
-    refresh()
+    """What the header and the Developer section show, as the room last found
+    it. This does not ask LM Studio: the manager asks every room for it every
+    two seconds, day and night, and LM Studio's log filled with the model
+    list. A page that is open calls `refresh` first."""
     cfg = settings()
     with LOCK:
         st = dict(STATE)

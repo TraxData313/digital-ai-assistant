@@ -2871,7 +2871,7 @@ function wireProviders() {
     try { PROV = await post("api/providers/codex-only", { enabled: mode.checked }); }
     catch (e) { alert(e.message); }
     paintProviders();
-    progress = await getJson("api/progress");
+    await pollProgress();
     renderUsage();
   };
   const pick = $("prov-pick");
@@ -4305,8 +4305,11 @@ function usageIfMoved() {
   renderUsage();
 }
 
+// `look` says a page is open on the room: only then does it re-ask LM Studio
+// whether the automatic memory's model is still there. The manager's own
+// asking, every two seconds, leaves it out.
 async function pollProgress() {
-  try { progress = await getJson("api/progress"); } catch (e) { /* the next poll asks again */ }
+  try { progress = await getJson("api/progress?look=1"); } catch (e) { /* the next poll asks again */ }
 }
 
 // A turn already running -- one a person started, one a session woke it for, or

@@ -979,6 +979,11 @@ class Handler(BaseHTTPRequestHandler):
             now["native_active"] = native_tools.RUNNING.is_set()
             # The automatic memory's state rides along: which model, whether it
             # is loaded, loading, working, or not here -- the header shows it.
+            # Only a page that is open (`?look=1`) has the room re-ask LM
+            # Studio whether the model is still there. The manager asks for
+            # this every two seconds, only to know whether the room is busy.
+            if parse_qs(url.query).get("look"):
+                recall.refresh()
             now["recall"] = recall.status()
             # What is left on the owner's plan. It rides the poll rather than
             # the turn because it moves while nobody is typing -- anything else
@@ -1025,6 +1030,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"lines": lines})
 
         if path == "/api/recall":
+            recall.refresh()
             return self._json(recall.status())
 
         if path == "/api/notebook":
