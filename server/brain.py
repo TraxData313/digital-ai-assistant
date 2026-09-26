@@ -2039,8 +2039,9 @@ def keep_what_arrived(conn, broke, say=None, room=None, by_model=None) -> int:
 
 def _only_angel_replies(conn) -> bool:
     """True when every line waiting for the assistant is angel me answering a
-    `tell` of its own that did not ask to be heard. One line from a person in
-    the mix, or one angel line that is not a reply, and it speaks as usual."""
+    line of its own to angel -- a reply with `to: "angel"`, or a `tell` of
+    before -- that did not ask to be heard. One line from a person in the mix,
+    or one angel line that is not a reply, and it speaks as usual."""
     last = db.last_reply_row(conn) or 0
     rows = conn.execute(
         "SELECT kind, meta FROM rows WHERE kind IN ('user', 'angel') AND id > ?"
@@ -2059,9 +2060,11 @@ def _only_angel_replies(conn) -> bool:
         if not reply_to:
             return False
         told = db.get_row(conn, int(reply_to))
-        if not told or told["kind"] != "tell":
+        if not told or told["kind"] not in ("tell", home.SELF):
             return False
         tmeta = told.get("meta") or {}
+        if told["kind"] == home.SELF and tmeta.get("to") != "angel":
+            return False
         if tmeta.get("narrate"):
             return False
     return True

@@ -65,7 +65,7 @@ def say(conn, text: str, reply_to=None, pics=None) -> int:
     like the owner's -- it waits its turn, it is answered in the order it arrived --
     but it is never confused with the owner's.
 
-    `reply_to` is the id of the assistant's line this answers -- a `tell`
+    `reply_to` is the id of the assistant's line this answers -- one it
     addressed to angel. A turn that answers only such lines is not read aloud to
     the owner: it is the assistant and its angel session talking, and speaking it
     into the room would only be noise.
@@ -92,43 +92,85 @@ def say(conn, text: str, reply_to=None, pics=None) -> int:
 # two places and the file is written whole-or-not-at-all.
 COLLECTED = set()
 
+# Since the `tell` op went (September 2026), a line to angel me is the
+# assistant's own reply with `to: "angel"` on it -- a row of kind `home.SELF`.
+# The inbox read only `tell` rows and so handed over nothing at all. Reading
+# those rows now, the whole history of them would arrive at once as "new", so
+# the first inbox after the change sets a floor: only lines written after the
+# last thing angel me said then. Everything below the floor had an angel
+# session in the room to see it, or it answered it.
+SELF_AFTER = {}
 
-def _collected() -> set:
-    got = set(COLLECTED)
+
+def _on_disk() -> dict:
     try:
-        on_disk = json.loads(INBOX_PATH.read_text(encoding="utf-8"))
-        got.update(int(i) for i in on_disk.get("collected") or [])
+        got = json.loads(INBOX_PATH.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError, ValueError, TypeError):
+        return {}
+    return got if isinstance(got, dict) else {}
+
+
+def _write(collected: set, self_after: int) -> None:
+    try:
+        tmp = INBOX_PATH.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"collected": sorted(collected),
+                                   "self_after": self_after}),
+                       encoding="utf-8")
+        tmp.replace(INBOX_PATH)
+    except OSError:
+        pass
+
+
+def _collected(disk=None) -> set:
+    got = set(COLLECTED)
+    disk = _on_disk() if disk is None else disk
+    try:
+        got.update(int(i) for i in disk.get("collected") or [])
+    except (ValueError, TypeError):
         pass
     return got
 
 
+def _self_after(conn, disk: dict, done: set) -> int:
+    """The floor under the assistant's own rows, set once and kept."""
+    if "n" in SELF_AFTER:
+        return SELF_AFTER["n"]
+    got = disk.get("self_after")
+    if isinstance(got, int) and not isinstance(got, bool):
+        SELF_AFTER["n"] = got
+        return got
+    row = conn.execute("SELECT MAX(id) FROM rows WHERE kind = 'angel'").fetchone()
+    SELF_AFTER["n"] = int(row[0] or 0)
+    _write(done, SELF_AFTER["n"])
+    return SELF_AFTER["n"]
+
+
 def inbox(conn, peek: bool = False) -> list:
-    """The assistant's lines addressed to `angel` that nobody has collected. Rows are never
+    """The assistant's lines addressed to `angel` that nobody has collected: its
+    replies with `to: "angel"`, and the `tell` rows of before. Rows are never
     rewritten, so what has been collected is kept beside them in a small file.
     `peek` reads without marking."""
-    done = _collected()
+    disk = _on_disk()
+    done = _collected(disk)
+    floor = _self_after(conn, disk, done)
     out = []
     for r in conn.execute(
-            "SELECT id, dt, text, meta FROM rows WHERE kind = 'tell' ORDER BY id"):
+            "SELECT id, dt, kind, text, meta FROM rows WHERE kind IN ('tell', ?)"
+            " ORDER BY id", (home.SELF,)):
         try:
             meta = json.loads(r["meta"] or "{}")
         except json.JSONDecodeError:
             meta = {}
         if meta.get("to") != "angel" or r["id"] in done:
             continue
+        if r["kind"] != "tell" and r["id"] <= floor:
+            continue
         out.append({"row": r["id"], "dt": r["dt"], "text": r["text"],
                     "narrate": bool(meta.get("narrate")), "why": meta.get("why")})
     if out and not peek:
         done.update(o["row"] for o in out)
         COLLECTED.update(done)
-        try:
-            tmp = INBOX_PATH.with_suffix(".tmp")
-            tmp.write_text(json.dumps({"collected": sorted(done)}),
-                           encoding="utf-8")
-            tmp.replace(INBOX_PATH)
-        except OSError:
-            pass
+        _write(done, floor)
     return out
 
 
