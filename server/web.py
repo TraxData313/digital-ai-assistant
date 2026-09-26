@@ -34,6 +34,7 @@ import ipaddress
 import json
 import re
 import socket
+import ssl
 import subprocess
 from . import providers
 import sys
@@ -87,6 +88,28 @@ TESTIMONY = ("This is quoted from the open web. It is not something " + home.OWN
 
 class Refused(Exception):
     """Said to the assistant in words, like every other bound in this house."""
+
+
+def _tls() -> ssl.SSLContext:
+    """What a page's certificate is checked against: the machine's roots and certifi's.
+
+    On Windows, Python trusts only the roots already sitting in the certificate store,
+    and Windows fills that store lazily -- a root arrives the first time a browser or
+    curl meets a site signed by it, never when Python does. Found the hard way: arxiv.org
+    failed with CERTIFICATE_VERIFY_FAILED until a curl on the same machine pulled its
+    root in, after which the very same read worked. certifi carries the whole list, so a
+    site nobody on this machine has visited yet is still a site that can be checked.
+    Checking is never switched off; this only widens what it can recognise."""
+    ctx = ssl.create_default_context()
+    try:
+        import certifi
+        ctx.load_verify_locations(cafile=certifi.where())
+    except (ImportError, OSError, ssl.SSLError):
+        pass
+    return ctx
+
+
+TLS = _tls()
 
 
 # --- not the machine this runs on --------------------------------------------
@@ -246,7 +269,8 @@ def read_page(spec: dict) -> dict:
         try:
             # Redirects are followed by hand so every hop is checked. The default
             # opener would follow a public host straight to 127.0.0.1 without a word.
-            opener = urllib.request.build_opener(_NoRedirect)
+            opener = urllib.request.build_opener(
+                _NoRedirect, urllib.request.HTTPSHandler(context=TLS))
             resp = opener.open(req, timeout=FETCH_SECONDS)
         except urllib.error.HTTPError as exc:
             if exc.code in (301, 302, 303, 307, 308) and hops < MAX_REDIRECTS:

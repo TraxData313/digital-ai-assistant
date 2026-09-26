@@ -1,4 +1,5 @@
 numpy
+certifi                   # web pages whose root Windows has not fetched yet
 
 # Optional -- the room runs without them and says what is missing:
 # sentence-transformers   meaning search over essences (keywords work without it)
