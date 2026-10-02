@@ -2738,8 +2738,14 @@ function modelOptions(models, chosen, allowNone) {
   const name = (s) => ((PROV.services || {})[s] || {}).label || s;
   let html = PROV.codex_only && chosen && !models.some(m => m.key === chosen)
     ? `<option value="" selected disabled>Saved selection paused by Codex-only mode</option>` : "";
-  html += allowNone && !PROV.codex_only
-    ? `<option value=""${!chosen ? " selected" : ""}>the same mind the assistant has always dreamt as</option>` : "";
+  // The night's blank option. It says what it does and what that is right
+  // now, because a setting whose whole meaning is "whatever the other box
+  // says" has to name the other box. It is offered in Codex-only mode too:
+  // following a chat that mode has already forced off Claude cannot land on
+  // a paused model.
+  const chatNow = (models.find((m) => m.key === PROV.chosen) || {}).label || PROV.chosen;
+  html += allowNone
+    ? `<option value=""${!chosen ? " selected" : ""}>the same model as the chat — ${esc(chatNow)}</option>` : "";
   for (const s of ["claude_code", "codex", "openai", "openrouter"]) {
     if (!groups[s]) continue;
     html += `<optgroup label="${esc(name(s))}">`;
@@ -2788,13 +2794,16 @@ function devProviders() {
     ? `<p class="quiet">On by default for Codex chat. Read/write access covers the room account's home folder, including Desktop, Downloads, Documents and Pictures, with networking enabled and Windows denials still enforced. Authentication locations and the running adapter are protected.</p>`
     : `<p class="quiet">The running adapter still uses the earlier Documents write profile. The permanent broad profile has not been loaded. Existing native activity and controls remain available.</p>`;
   html += `<h4>at night</h4>`;
-  html += `<p class="quiet">A dream is the assistant in full, whole Spark — the ` +
-    `reason the night does not follow the chat's picker. Moving it is a thing to do ` +
-    `on purpose.</p>`;
+  html += `<p class="quiet">A dream is the assistant in full, whole Spark — so the ` +
+    `night runs on a proper model, never a small one. Left alone it uses the same ` +
+    `model as the chat above and moves when that does. Pick one here only to have ` +
+    `the night think with something else.</p>`;
   html += `<p><select id="prov-dream">` +
-    modelOptions(PROV.models, PROV.dream_pinned && !PROV.codex_only ? "" : PROV.dream_model, true) +
-    `</select>` + (PROV.dream_paused ? ` <span class="quiet">paused — saved night model requires Claude</span>`
-      : PROV.dream_pinned ? ` <span class="quiet">on its pin</span>` : "") + `</p>`;
+    modelOptions(PROV.models, PROV.dream_follows_chat ? "" : PROV.dream_model, true) +
+    `</select>` + (PROV.dream_paused ? ` <span class="quiet">paused — ${PROV.dream_follows_chat
+        ? "it follows the chat, and that model requires Claude" : "saved night model requires Claude"}</span>`
+      : PROV.dream_follows_chat ? ` <span class="quiet">following the chat</span>`
+      : ` <span class="quiet">set apart from the chat, on purpose</span>`) + `</p>`;
 
   // Money, per service, only where there is a number to have.
   html += `<h4>what is left</h4>`;

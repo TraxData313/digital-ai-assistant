@@ -222,20 +222,44 @@ def bench_choice(scratch):
           json.loads(providers.CHOICE_PATH.read_text(encoding="utf-8"))["model"]
           == "claude_code/claude-fable-5-1")
 
-    # The rule: the night is not the chat's dropdown.
-    check("the night did not move with the chat",
-          providers.dream_model() == providers.DEFAULT_KEY,
-          "a dream keeps its own pin, and does not follow the chat")
+    # The rule: untouched, the night is whatever the chat is -- which is what
+    # people were setting by hand, twice, every time they moved the chat.
+    check("an untouched night follows the chat",
+          providers.dream_model() == "claude_code/claude-fable-5-1"
+          and providers.dream_saved() is None,
+          "nobody should have to say the same model twice")
+    providers.choose("claude_code/claude-opus-5")
+    check("and it follows the chat when the chat moves again",
+          providers.dream_model() == "claude_code/claude-opus-5")
+    providers.choose("claude_code/claude-fable-5-1")
+
     providers.choose_dream("claude_code/claude-sonnet-5")
-    check("the night can be moved on purpose",
-          providers.dream_model() == "claude_code/claude-sonnet-5")
+    check("the night can still be set apart on purpose",
+          providers.dream_model() == "claude_code/claude-sonnet-5"
+          and providers.dream_saved() == "claude_code/claude-sonnet-5")
     check("and moving it did not move the chat",
           providers.chosen() == "claude_code/claude-fable-5-1")
+    providers.choose("claude_code/claude-opus-5")
+    check("a night set on purpose does not drift when the chat moves",
+          providers.dream_model() == "claude_code/claude-sonnet-5",
+          "that is the whole point of having said it")
+    providers.choose("claude_code/claude-fable-5-1")
+
     providers.choose_dream("")
-    check("clearing the night puts it back on its pin",
-          providers.dream_model() == providers.DEFAULT_KEY)
+    check("clearing the night puts it back behind the chat",
+          providers.dream_model() == "claude_code/claude-fable-5-1"
+          and providers.dream_saved() is None)
     check("and still did not touch the chat",
           providers.chosen() == "claude_code/claude-fable-5-1")
+    # A cold price table would have `catalogue` send a thread at OpenRouter,
+    # and this file promises it touches nothing out there. A warm one asks
+    # nobody. The keys are already cleared above, so the balance readers
+    # answer "no key" without reaching either.
+    providers._CACHE["prices"] = {"at": time.time(), "by_id": {},
+                                  "error": None, "asking": False}
+    check("the catalogue says which of the two it is",
+          providers.catalogue()["dream_follows_chat"] is True,
+          "the page draws a different line for each")
 
 
 # -- money --------------------------------------------------------------------

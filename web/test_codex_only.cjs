@@ -14,7 +14,7 @@ const context = vm.createContext({
       {window: 'codex_secondary', label: 'Weekly', used_fraction: .09}],
     credits: {unlimited: false, balance: '217.8642000000'}}},
   PROV: {codex_only: true, chosen: 'codex/sol', dream_model: 'claude_code/opus',
-    dream_pinned: true, dream_paused: 'Paused', services: {codex: {label: 'Codex subscription'}},
+    dream_follows_chat: false, dream_paused: 'Paused', services: {codex: {label: 'Codex subscription'}},
     models: [{key: 'codex/sol', service: 'codex', label: 'Sol', ready: true, price: {}}],
     paused: [{capability: 'Dreams', reason: 'Saved night model requires Claude'}]},
   $: () => usage, esc: x => String(x ?? ''), k: String, roomy: String,
@@ -48,7 +48,11 @@ const html = context.devProviders();
 assert.match(html, /id="prov-codex-only" checked/);
 assert.match(html, /Saved selection paused/);
 assert.match(html, /paused — saved night model requires Claude/);
-assert.doesNotMatch(html, /Claude Code has no bill|always dreamt as/);
+assert.doesNotMatch(html, /Claude Code has no bill/);
+// The night's blank option names the chat it would follow, and is offered in
+// Codex-only mode too -- following a chat already forced off Claude is safe.
+assert.match(html, /the same model as the chat — Sol/);
+assert.doesNotMatch(html, /always dreamt as|on its pin/);
 assert.doesNotMatch(context.devPlan(), /Claude Max|old-Claude/);
 const savedProgress = context.progress;
 context.progress = null;
@@ -66,6 +70,9 @@ context.PROV.codex_only = false;
 context.PROV.dream_paused = null;
 const legacy = context.devProviders();
 assert.match(legacy, /Claude Code has no bill/);
-assert.match(legacy, /always dreamt as/);
+assert.match(legacy, /the same model as the chat — Sol/);
+assert.match(legacy, /set apart from the chat, on purpose/);
+context.PROV.dream_follows_chat = true;
+assert.match(context.devProviders(), /following the chat/);
 assert.doesNotMatch(legacy, /id="prov-codex-only" checked/);
 console.log('UI render checks passed: toggle, paused selection, Codex gauges, legacy mode.');

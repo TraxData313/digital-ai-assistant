@@ -179,7 +179,12 @@ def paused_capabilities() -> list:
     names = ["Model-backed web search",
              "Claude quota polling and quota senses"]
     if paused_reason(dream_model()):
-        names.append("Dreams (saved night model requires Claude)")
+        # Two ways to land here now, and they want different fixing: a night
+        # set apart on purpose needs its own box changed, a night following
+        # the chat needs the chat's.
+        names.append("Dreams (saved night model requires Claude)"
+                     if dream_saved() else
+                     "Dreams (they follow the chat model, which requires Claude)")
     if paused_reason(chosen()):
         names.append("Chat and scheduled turns (saved chat model requires Claude; choose a model in Settings)")
     return [{"capability": name, "status": "paused", "reason": CLAUDE_PAUSED}
@@ -567,18 +572,9 @@ def chosen() -> str:
     return DEFAULT_KEY
 
 
-def dream_model() -> str:
-    """Which model folds the shelf at night, which is deliberately not the
-    one the chat is set to.
-
-    A design decision from when the dreamer was built: a dream runs on the
-    assistant's full model, not a small one. The pin that enforced it was a
-    constant -- fine while there was one house, and wrong the moment there
-    were three, because it would have named Opus on a night the chat had been
-    on Terra. So it is a setting now, and still a pin: it never follows the
-    chat's dropdown, and unset means the default model. Moving it is a thing
-    somebody does on purpose, on this page, which is the whole difference
-    between a choice and a drift."""
+def dream_saved():
+    """The night's own model, if one was ever chosen. `None` means nobody has,
+    and the night follows the chat."""
     try:
         got = json.loads(CHOICE_PATH.read_text(encoding="utf-8"))
         key = (got or {}).get("dream_model")
@@ -586,7 +582,25 @@ def dream_model() -> str:
             return str(key)
     except (OSError, json.JSONDecodeError, AttributeError):
         pass
-    return DEFAULT_KEY
+    return None
+
+
+def dream_model() -> str:
+    """Which model folds the shelf at night.
+
+    A dream is the assistant in full, so the night runs on a proper model and
+    never on a small one. That part has not moved. What has is where it looks
+    when nobody has said: unset used to mean the default model, which meant a
+    house that had moved its chat to Sol went on dreaming as Opus until
+    somebody came and said so a second time -- and the one line on the page
+    that explained this said "the same mind the assistant has always dreamt
+    as", which reads like "the same as the chat" and did not mean it. So
+    unset now means exactly that: the model the chat is on.
+
+    Choosing one here still wins and still sticks, because a night that is
+    deliberately not the chat's model is a real thing to want. It is just no
+    longer what happens to anybody who never touched the setting."""
+    return dream_saved() or chosen()
 
 
 def _utc_now() -> str:
@@ -706,7 +720,9 @@ def _write_choice(field: str, key, allow_none: bool = False) -> dict:
         raise Refused(CLAUDE_PAUSED)
     if allow_none and not (key or "").strip():
         _save_choice(**{field: None})
-        return {field: None, "label": resolve(DEFAULT_KEY)["label"],
+        # Only the night can be cleared, and cleared means it follows the
+        # chat -- so the label to hand back is the chat's, not the default's.
+        return {field: None, "label": resolve(chosen())["label"],
                 "default": True}
     spec = resolve(key)
     service = spec["service"]
@@ -1157,10 +1173,11 @@ def catalogue(wait: float = 0.0) -> dict:
         "chosen": chosen(),
         "credits": credits_note() or {},
         "dream_model": dream_model(),
-        # Whether the night is on its own pin or has been moved on purpose.
-        # The page draws the difference, because "the same as the chat" and
-        # "deliberately set to the same thing" are not the same setting.
-        "dream_pinned": dream_model() == DEFAULT_KEY,
+        # Whether the night simply follows the chat or has been set apart on
+        # purpose. The page draws the difference, because "whatever the chat
+        # is" and "deliberately set to the same thing" are not the same
+        # setting -- the first one moves when the chat does.
+        "dream_follows_chat": dream_saved() is None,
         "default": DEFAULT_KEY,
         "prices_read_at": table["read_at"],
         "prices_error": table["error"],
