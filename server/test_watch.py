@@ -958,8 +958,8 @@ def main():
     check("Steam is polled no more often than every two hours",
           watch.STEAM_POLL_INTERVAL_S == 2 * 60 * 60,
           watch.STEAM_POLL_INTERVAL_S)
-    check("Nexus is polled on the same two hours",
-          watch.NEXUS_POLL_INTERVAL_S == 2 * 60 * 60,
+    check("Nexus is polled once a day, slower than Steam on purpose",
+          watch.NEXUS_POLL_INTERVAL_S == 24 * 60 * 60,
           watch.NEXUS_POLL_INTERVAL_S)
     check("a Steam backoff stands down longer than an ordinary poll waits",
           watch.STEAM_BACKOFF_S > watch.STEAM_POLL_INTERVAL_S,
@@ -967,9 +967,9 @@ def main():
     check("a Nexus backoff stands down longer than an ordinary poll waits",
           watch.NEXUS_BACKOFF_S > watch.NEXUS_POLL_INTERVAL_S,
           (watch.NEXUS_BACKOFF_S, watch.NEXUS_POLL_INTERVAL_S))
-    check("and both senses say that cadence in words, off the constant",
+    check("and both senses say their own cadence in words, off the constant",
           watch.senses()["steam_comment"]["said"] == "every 2 hours"
-          and watch.senses()["nexus_comment"]["said"] == "every 2 hours",
+          and watch.senses()["nexus_comment"]["said"] == "every 24 hours",
           {k: v["said"] for k, v in watch.senses().items() if v["said"]})
     check("a span is spelled in its largest whole unit",
           (watch._spell(7200), watch._spell(3600), watch._spell(900),

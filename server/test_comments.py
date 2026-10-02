@@ -377,9 +377,12 @@ def main():
     check("it counts the day off the same ledger",
           standing["posts_left_today"] == 0, standing["posts_left_today"])
     check("it names both mods", len(standing["mods"]) == 2)
-    check("and carries the sense's own cadence, not a number typed here",
-          all(p["every"] == "every 2 hours"
-              for m in standing["mods"] for p in m["places"].values()),
+    check("and carries each sense's own cadence, not a number typed here",
+          all(p["every"] == watch._every(watch.STEAM_POLL_INTERVAL_S)
+              if where == "steam"
+              else p["every"] == watch._every(watch.NEXUS_POLL_INTERVAL_S)
+              for m in standing["mods"]
+              for where, p in m["places"].items()),
           standing["mods"])
 
     if FAILED:

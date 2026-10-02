@@ -33,8 +33,9 @@ items at once.
 
 `nexus_comment` is the same shape turned on the Nexus Mods pages the home's
 settings list (`NEXUS_ITEMS`), each carrying its own posts-tab URL. It polls
-no more than once every `NEXUS_POLL_INTERVAL_S` (two hours, same as Steam)
-per mod, ignores comments from `NEXUS_IGNORE_AUTHOR`, and its first look at a
+no more than once every `NEXUS_POLL_INTERVAL_S` per mod (a day, slower than
+Steam's two hours -- the constant says why), ignores comments from
+`NEXUS_IGNORE_AUTHOR`, and its first look at a
 mod seeds a baseline and wakes nobody -- same as Steam. Its read path drives
 a real headless browser, because Cloudflare's bot management flatly 403s a
 plain HTTP fetch; the DOM walk and the Cloudflare-challenge detection were
@@ -169,18 +170,28 @@ STEAM_IGNORE_AUTHOR = str(COMMENTS.get("steam_author") or "")
 # Each item carries its own posts-tab `url`, written in the home's file.
 NEXUS_ITEMS = tuple(COMMENTS.get("nexus_items") or ())
 
-# Same cadence as Steam, per mod, on that mod's own clock -- and same
-# reason. It matters more here than on Steam, not less: every poll of this
+# Once a day, per mod, on that mod's own clock. It started on Steam's two
+# hours and for Steam's reason, but Nexus is not Steam: every poll of this
 # one is a real headless Chromium walking a page through Cloudflare, which is
-# the kind of traffic that gets looked at.
-NEXUS_POLL_INTERVAL_S = 2 * 60 * 60
+# the kind of traffic that gets looked at -- and often enough does not get
+# through. At two hours a bad Cloudflare stretch was a fresh failure waking
+# every couple of hours, per mod, which is the sound of a sense asking to be
+# muted. A day, at the owner's word, 2 October 2026: a mod comment can wait a
+# day, and eleven fewer walks past a bot wall a day is the quieter visitor as
+# well as the quieter room.
+NEXUS_POLL_INTERVAL_S = 24 * 60 * 60
 
 # A fetch failure (Cloudflare challenge, missing comments section, no
 # Playwright) backs off to twice the cadence, same order as Steam's 429
-# backoff and moved with it for the same reason -- but unlike Steam's silent
-# per-poll decline, the first failure wakes the assistant once, loud; see
-# _nexus_item for why.
-NEXUS_BACKOFF_S = 4 * 60 * 60
+# backoff -- but unlike Steam's silent per-poll decline, the first failure
+# wakes the assistant once, loud; see _nexus_item for why.
+#
+# Written off the cadence rather than typed, because it has to move with it:
+# a backoff shorter than the ordinary poll would buy a Cloudflare challenge a
+# SOONER look than a quiet success does, which is the opposite of backing
+# off. That very bug was shipped once when the interval moved and this did
+# not, so the arithmetic is here now and not in anybody's memory.
+NEXUS_BACKOFF_S = 2 * NEXUS_POLL_INTERVAL_S
 
 # Playwright's own default-ish page-load / selector-wait budget: 30s.
 NEXUS_TIMEOUT_MS = 30000

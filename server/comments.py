@@ -17,7 +17,8 @@ WHAT IS DELIBERATELY NOT HERE, and must not quietly grow:
 
 * No polling. This module never runs on a clock; every call is because the
   assistant asked for it on a turn. The clocks belong to `watch.py` and there
-  is exactly one of them per platform per mod, at the watcher's two hours.
+  is exactly one of them per platform per mod, at the watcher's own cadence
+  for that platform -- Steam's two hours, Nexus's day.
 * No queue, no stored draft, no retry. A post is one call and one comment.
   If it fails it fails loudly and the words the assistant wrote are still in
   its reply where the owner can read them.
