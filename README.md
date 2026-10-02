@@ -177,6 +177,40 @@ home's `artwork/` (`icon.ico`, `icon-down.ico`, `portrait.png`,
 `wallpaper.png`, `wallpapers/`, `icon-192.png`, ...). Comment senses for Steam
 Workshop or Nexus Mods items read their items from `data/comments.json`.
 
+### Watching another mod's comments
+
+Adding a mod is one entry in the home's `data/comments.json` and no code at
+all. The file is the only list there is: `steam_comment` and `nexus_comment`
+read their items from it, the organ that reads and answers a thread joins the
+two lists by `label`, and the poster's allow-list -- the only items it may
+ever speak on -- is built from the Steam half.
+
+```json
+{
+ "steam_id64": "<the owner's 17-digit account id>",
+ "steam_author": "<their display name on the thread, so their own replies never wake it>",
+ "nexus_author": "<their Nexus name, same reason>",
+ "sign_off": "<the line every posted comment must end with>",
+ "steam_items": [{"id": "<Workshop item id>", "label": "<the mod's name>"}],
+ "nexus_items": [{"id": "<Nexus mod id>", "label": "<the mod's name>",
+                  "url": "https://www.nexusmods.com/<game>/mods/<id>?tab=posts"}]
+}
+```
+
+- `label` is what a waking says out loud and what a comment operation is asked
+  for, so it names the mod in a sentence rather than being an id.
+- A mod on one platform only is ordinary, not an error: leave it out of the
+  other list. Reading it there then says it is not watched there, by name,
+  rather than coming back an empty thread.
+- Both lists are matched on `label`, so the same mod on both platforms must be
+  spelt the same way in both.
+- A task on the Projects tab binds to the **item id**, not the label: Steam and
+  Nexus can both watch a mod of one name, and the id is the key that cannot
+  collide.
+- The first look at a new item counts everything already on the page as
+  history and wakes nobody. Only what arrives after it is news.
+- Restart the room: the lists are read at boot.
+
 ## Tests
 
 The benches run from the code folder with a made-up identity and never touch
