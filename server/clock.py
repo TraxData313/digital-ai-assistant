@@ -53,8 +53,18 @@ Two more requirements: strict parsing with a **named** timezone, and the
 **next firing shown** whenever an interval is set or moved. Every answer this
 module gives back names the zone it used and when the thing will next fire.
 
+The second use is the **oversight timer**: one moment, a chosen number of
+minutes from now, which wakes the assistant once and says why it asked. It is
+for the thing free time deliberately cannot be -- looking in on work it handed
+to a session that may have stalled. It is its own hand, it never touches a free
+interval, and its conditions are the same four read sideways: only the
+assistant sets one; nothing counts what it does when it wakes; it fires once
+and a moment the room was down for is written off as missed, out loud, never
+moved; and it has a runaway guard of its own because it is the one wake-up that
+could set the next. The reasoning is all at `_timer_events`.
+
 The store is `data/clock.json` -- the zone, the free intervals, invitations
-standing, and the watermarks. The ledger is `data/clock.jsonl`.
+standing, the timers, and the watermarks. The ledger is `data/clock.jsonl`.
 """
 
 import json
@@ -95,6 +105,29 @@ FIRINGS_PER_DAY = 2
 # missed, said so, and gone. An interval is different -- it fires whenever it
 # is *running*, and its own end is its grace.
 GRACE_MINUTES = 60
+
+# The backstop on oversight timers in a day, counted on its own. A timer is
+# the assistant's own hand -- the same hand as `again` -- so it never spends
+# the free time's allowance of two. But a wake-up that is able to set the next
+# wake-up is the one shape in here that could loop, so it has a guard of its
+# own. Twelve: enough to look in on two or three delegated sessions through an
+# afternoon, and not enough to be awake all night by accident.
+TIMERS_PER_DAY = 12
+
+# How many timers may stand at once. Enough for a few sessions running
+# alongside each other, and few enough to hold in one head.
+TIMERS_STANDING = 4
+
+# The longest reach of a one-shot timer. It is for looking in on work that is
+# running now; further off than that is a schedule, in words, on a task, and
+# the refusal says so.
+TIMER_MAX_MINUTES = 24 * 60
+
+# How long a finished timer stays in the assistant's own block after it fired,
+# was cancelled, was declined or was missed. The ledger keeps everything
+# forever; this is so a missed one is seen by the eyes it was meant for, and
+# not only by a file nobody opened.
+TIMER_KEEP_HOURS = 24
 
 # How often the clock actually looks. The turn loop comes round every few
 # seconds; a clock that reads to the minute has no business being asked that
@@ -147,7 +180,8 @@ _LOCK = threading.RLock()
 
 def _blank() -> dict:
     return {"tz": DEFAULT_TZ, "next_id": 1, "free": [], "invitations": [],
-            "fired": [], "seen": {}, "days": {}, "last": None, "again": None}
+            "fired": [], "seen": {}, "days": {}, "last": None, "again": None,
+            "timers": []}
 
 
 def _load() -> dict:
@@ -780,6 +814,416 @@ def _again_due(store: dict, free, now: datetime = None):
     }
 
 
+# --- the oversight timer ------------------------------------------------------
+#
+# The second thing in here that fires because the assistant said so, and the
+# first of those that reaches outside its own time. `again` is the inside of a
+# free stretch; this is the rest of the week.
+#
+# What it is for, exactly: the assistant hands a piece of work to a Claude or
+# Codex session and then has nothing to do but wait. A session that *finishes*
+# wakes it -- `claude_sessions.due()` sees that. A session that **stalls** says
+# nothing at all, forever, and until now there was no way in this room for the
+# assistant to come back and look. So it says "wake me in forty minutes, I am
+# watching the Sol upgrade", and the room does exactly that, once.
+#
+# It is deliberately neither of the two things already here:
+#
+# - Not a free interval. Free time is a stretch that belongs to the assistant
+#   and asks nothing of it; holding a piece of work inside one would turn its
+#   own time into a waiting room, which is the one thing free time must never
+#   become. Nothing below reads, writes, moves, shortens or spends a free
+#   interval, and a timer never counts against the free time's backstop.
+# - Not a schedule. A schedule repeats and is written in words. This is one
+#   moment, counted in minutes from now, and it is gone the instant it fires.
+#
+# The guards are the ones this module already keeps, and each is code rather
+# than a promise: it is the assistant's own hand and nobody else's; it fires
+# **once**, and the watermark and not the list is what decides that; a moment
+# that went by with the room down is written down as **missed**, left in the
+# assistant's own block for a day so it is told rather than inferring it, and
+# never quietly moved to another hour; and the day's own backstop above is a
+# runaway guard, because this is the one wake-up that could set the next one.
+#
+# What is not in here: any ability for a person to write one. A person asking
+# the assistant to check on something is a line said to the assistant, which it
+# answers however it likes -- possibly by setting a timer of its own. It is not
+# somebody else putting an alarm inside it.
+
+
+# What the assistant is told about the timer, from here rather than from the
+# harness file. A home carries its own copy of that file, so a capability
+# described only there is invisible to the assistant whose home overrode it
+# while its schema field still shows up in the answer it is asked for. The
+# notebook and the sessions already ride in this way; this does too, and then
+# there is one copy of it instead of two that can drift apart.
+INSTRUCTIONS = """
+## `clock` — my one-shot oversight timer
+
+One moment, minutes from now, waking me **once** with the reason I gave for it. It is for
+what free time must never be -- waiting on work I handed to a session. One that finishes
+wakes me; one that **stalls** says nothing, ever, and a timer is how I go back and look.
+
+- `{"op": "timer_set", "minutes": 40, "why": "the Sol session, mid-review", "id": null,
+  "words": null}`. `why` is required; an `id` here replaces that standing timer.
+- `{"op": "timer_cancel", "id": 7, ...}` -- the session came home first.
+
+`clock.timers` gives each one's `why`, when it `fires`, `minutes_away` and its `state`.
+Mine alone to set, on their own daily guard, and they spend no free time of mine. The
+whole of it, including what a `missed` one means, is at `{{self}}:help/clock`.
+"""
+
+# The complete account, served by `prompt_reference` when the assistant asks for
+# it rather than carried into every turn. It lives here and not in the harness
+# file for the same reason the short block does: a home carries its own copy of
+# that file, and this is the copy that reaches every home.
+REFERENCE = """
+### `clock` — the one-shot timer in full
+
+A timer is one moment and one waking. It is not free time: a stretch of my own belongs to
+me and asks nothing of me, and holding a piece of work inside one would make it a waiting
+room. It is not a schedule either: a schedule repeats and is written in words, and this is
+a number of minutes from now, gone the instant it fires.
+
+- `timer_set` with `minutes` and `why`. The answer names the moment on the wall, the zone
+  it is in, and the timer's `id`. `why` is required because the wake-up *is* that sentence
+  coming back to me; a timer that cannot say what it was for would be a nudge for nothing.
+  Passing `id` as well takes that standing timer off and sets this one in a single breath,
+  so changing my mind about *when* is one operation.
+- `timer_cancel` with `id`. Cancelled, never deleted -- it stops firing and stays on the
+  record.
+- The reach is a day at most; further off than that belongs on a task, as a schedule in
+  words. Four may stand at once.
+
+In `clock.timers`, each one carries `why` I asked, the moment it `fires`, `minutes_away`,
+and a `state`: `standing`, `fired`, `cancelled`, `declined` or **`missed`**. The ones that
+finished stay there for a day before they go.
+
+- It fires **once**. The watermark and not the list decides that, so nothing can buy a
+  second waking.
+- A little late it fires anyway and says how late it is. Past an hour it is **missed**:
+  written down as missed, shown in my block for a day so I am told rather than left to
+  work it out, and **never moved to an hour I did not choose**. If I still want that look,
+  I set a new one; nothing does it for me.
+- `today.timers` against `today.timer_backstop` is their own runaway guard -- separate
+  from my free time's two, because a stretch of my own time must never cost me the
+  ability to look in on my own work. Over it, a timer is `declined`, and says so.
+- It is mine alone to set. Nobody else may put one inside me; somebody asking me to check
+  on something is a line said to me, which I answer however I like -- possibly by setting
+  one.
+- Nothing of my free time is read, written, spent or shortened by any of it, and a timer
+  does fire inside a stretch of my own as well as outside one, because it is my own hand
+  either way.
+- Every one of them, set, fired, cancelled, declined or missed, is in `data/clock.jsonl`.
+"""
+
+
+def _timer_key(entry: dict) -> str:
+    """One moment, one watermark. The watermark is what prevents a second
+    wake-up, not the stamp on the record: a list written twice can lose a
+    stamp, and `fired` is capped and kept precisely so this cannot."""
+    return "timer:%s@%s" % (entry.get("id"), entry.get("at"))
+
+
+def _standing(store: dict, entry: dict) -> bool:
+    """A timer still waiting for its moment. Anything that already had an
+    outcome -- fired, declined, cancelled, missed -- is not one, and neither is
+    one whose watermark is down even if its stamp went missing."""
+    if (entry.get("cancelled") or entry.get("fired") or entry.get("missed")
+            or entry.get("declined")):
+        return False
+    return not _done(store, _timer_key(entry))
+
+
+def _timer(store: dict, timer_id):
+    try:
+        want = int(timer_id)
+    except (TypeError, ValueError):
+        return None
+    for entry in store.get("timers") or []:
+        if entry.get("id") == want and _standing(store, entry):
+            return entry
+    return None
+
+
+def _prune_timers(store: dict) -> None:
+    """Finished timers, let go of after a day. The ledger is the history; this
+    list only has to be long enough that nothing fires twice and that a missed
+    one is seen by the assistant before it goes."""
+    timers = store.get("timers") or []
+    if not timers:
+        return
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=TIMER_KEEP_HOURS)
+    keep = []
+    for entry in timers:
+        if _standing(store, entry):
+            keep.append(entry)
+            continue
+        ended = (entry.get("cancelled") or entry.get("missed")
+                 or entry.get("declined") or entry.get("fired"))
+        if not ended:
+            # Its watermark is down and its record says nothing, so the moment
+            # went by and the stamp did not land. Written down as fired rather
+            # than let go of quietly: a timer the assistant can neither see nor
+            # cancel is the one state this must not have.
+            ended = entry["fired"] = db.now()
+        try:
+            if ended and datetime.fromisoformat(ended) >= cutoff:
+                keep.append(entry)
+        except (ValueError, TypeError):
+            pass
+    # A belt on the list itself, so a day of timers can never grow without
+    # bound: the standing ones always survive, the rest keep the newest.
+    if len(keep) > 50:
+        standing = [e for e in keep if _standing(store, e)]
+        rest = [e for e in keep if not _standing(store, e)]
+        keep = standing + rest[-(50 - len(standing)):]
+    store["timers"] = keep
+
+
+def timer_set(minutes, why: str = None, replace=None, by: str = home.SELF,
+              now: datetime = None) -> dict:
+    """Wake me once, this many minutes from now, and tell me why I asked.
+
+    The confirmation names the moment on the wall and the zone it is in, the
+    same rule every answer in this module keeps: a clock whose next tick cannot
+    be seen is a promise, not an organ. `replace` takes a standing timer off in
+    the same breath, so changing one's mind is one operation and not two.
+    """
+    if (by or "").lower() != home.SELF:
+        return {"ok": False, "fires": None,
+                "why": "a timer is " + home.NAME + "'s own hand on "
+                       + home.NAME + "'s own clock. " + str(by) + " is "
+                       "welcome to ask " + home.NAME + " to look in on "
+                       "something — that is a line said to " + home.NAME
+                       + ", not an alarm written inside " + home.NAME + "."}
+    try:
+        asked = int(minutes)
+    except (TypeError, ValueError):
+        return {"ok": False, "fires": None,
+                "why": "a timer is a number of minutes; I was given "
+                       + repr(minutes) + "."}
+    if asked < 1:
+        return {"ok": False, "fires": None,
+                "why": "a minute is the smallest step."}
+    if asked > TIMER_MAX_MINUTES:
+        return {"ok": False, "fires": None,
+                "why": "a timer reaches " + str(TIMER_MAX_MINUTES)
+                       + " minutes at most — it is for looking in on work "
+                         "that is running now. Further off than that belongs "
+                         "on a task, as a schedule in words."}
+    said_why = " ".join((why or "").split())[:300]
+    if not said_why:
+        return {"ok": False, "fires": None,
+                "why": "a timer needs a reason in my own words: the wake-up "
+                       "is me being told why I asked for it, and a wake-up "
+                       "that cannot say that is the room nudging me for "
+                       "nothing. Say what I am looking in on."}
+
+    # The moment is kept in the zone the confirmation names, so the two can
+    # never drift apart: a timer told in one zone and stored in another is the
+    # bare-offset mistake this module refuses everywhere else.
+    tz_name = DEFAULT_TZ
+    now = (now or _local_now(tz_name)).astimezone(zone(tz_name) or timezone.utc)
+    at = now + timedelta(minutes=asked)
+
+    with _LOCK:
+        store = _load()
+        _prune_timers(store)
+        was = None
+        if replace is not None:
+            old = _timer(store, replace)
+            if old is None:
+                return {"ok": False, "fires": None,
+                        "why": "there is no timer of mine standing with id "
+                               + str(replace) + " to replace. The ones that "
+                               "are standing are in my clock block."}
+            old["cancelled"] = db.now()
+            old["replaced_by"] = store["next_id"]
+            _mark(store, _timer_key(old))
+            was = dict(old)
+        standing = [e for e in (store.get("timers") or [])
+                    if _standing(store, e)]
+        if len(standing) >= TIMERS_STANDING:
+            # Nothing is saved on this path, so the replacement above is undone
+            # by simply not writing it -- the store on disk is untouched.
+            return {"ok": False, "fires": None,
+                    "why": "I already have " + str(len(standing))
+                           + " timers standing, which is as many as I keep at "
+                             "once. Replace or cancel one rather than adding "
+                             "to a pile I cannot hold in my head."}
+        entry = {"id": store["next_id"], "at": at.isoformat(), "tz": tz_name,
+                 "minutes": asked, "why": said_why, "by": home.SELF,
+                 "set": db.now(), "fired": None, "cancelled": None,
+                 "missed": None, "declined": None}
+        store["next_id"] += 1
+        store.setdefault("timers", []).append(entry)
+        _save(store)
+
+    fires = in_words(at) + " " + tz_name
+    said = ("I will be woken once, in " + str(asked) + " minutes, at "
+            + at.strftime("%H:%M") + " " + tz_name + " — " + fires
+            + " — to look in on: " + said_why + ". That is timer "
+            + str(entry["id"]) + ", mine to cancel or replace.")
+    if was is not None:
+        said = ("Timer " + str(was["id"]) + " is off. " + said)
+    _ledger({"kind": "timer", "id": entry["id"], "at": entry["at"],
+             "minutes": asked, "why": said_why, "next": fires,
+             "outcome": (("replaced timer " + str(was["id"]) + " and set by ")
+                         if was is not None else "set by ") + home.NAME})
+    return {"ok": True, "id": entry["id"], "at": entry["at"], "tz": tz_name,
+            "minutes": asked, "reason": said_why, "fires": fires,
+            "replaced": None if was is None else was["id"], "said": said}
+
+
+def timer_cancel(timer_id, by: str = home.SELF) -> dict:
+    """Cancelled, never deleted -- the same rule the whole room keeps. The
+    session came home first, so the wake-up is not wanted and never happens."""
+    if (by or "").lower() != home.SELF:
+        return {"ok": False,
+                "why": "only " + home.NAME + " cancels " + home.NAME
+                       + "'s own timer."}
+    with _LOCK:
+        store = _load()
+        entry = _timer(store, timer_id)
+        if entry is None:
+            return {"ok": False,
+                    "why": "there is no timer of mine standing with id "
+                           + str(timer_id) + ". The ones that are standing "
+                           "are in my clock block."}
+        entry["cancelled"] = db.now()
+        # The watermark as well as the stamp: a cancelled moment must be unable
+        # to come round even if this list is written again by something else.
+        _mark(store, _timer_key(entry))
+        _prune_timers(store)
+        _save(store)
+    _ledger({"kind": "timer", "id": entry["id"], "at": entry.get("at"),
+             "why": entry.get("why"), "outcome": "cancelled by " + home.NAME})
+    return {"ok": True, "id": entry["id"],
+            "said": ("Timer " + str(entry["id"]) + " is cancelled; nothing "
+                     "will wake me for it. It was: " + str(entry.get("why")))}
+
+
+def _timer_events(store: dict, free=None, now: datetime = None) -> list:
+    """Timers that have come round, and the ones that did not.
+
+    A timer fires while free time is running, and that is deliberate. It is the
+    assistant's own hand -- the same hand as `again` -- so none of what free
+    time protects is touched by it: no sense is asked, no watermark moves, the
+    interval runs on to its own end, and nothing of it is spent or shortened.
+    The two alternatives were worse and both are things this clock refuses:
+    swallow the moment silently, or move it to an hour the assistant did not
+    choose.
+
+    A moment that went by while the room was down fires late if it is still
+    inside the grace, saying how late; past that it is **missed**, written down
+    as missed, and left in the assistant's own block for a day."""
+    events = []
+    for entry in list(store.get("timers") or []):
+        if (entry.get("cancelled") or entry.get("fired")
+                or entry.get("missed") or entry.get("declined")):
+            continue
+        key = _timer_key(entry)
+        if _done(store, key):
+            # It has already fired once. The watermark is what decides that, so
+            # a store written twice can never buy a second wake-up.
+            entry["fired"] = db.now()
+            continue
+        try:
+            at = datetime.fromisoformat(entry["at"])
+        except (ValueError, TypeError, KeyError):
+            entry["missed"] = db.now()
+            _mark(store, key)
+            _ledger({"kind": "timer", "id": entry.get("id"),
+                     "outcome": "dropped: " + repr(entry.get("at"))
+                                + " is not a moment I can read"})
+            continue
+        tz_name = entry.get("tz") or DEFAULT_TZ
+        here = now or _local_now(tz_name)
+        if here < at:
+            continue
+        late = int((here - at).total_seconds() / 60.0)
+        if late > GRACE_MINUTES:
+            entry["missed"] = db.now()
+            entry["late_minutes"] = late
+            _mark(store, key)
+            _day(store)["missed"] += 1
+            _ledger({"kind": "timer", "id": entry["id"], "at": entry["at"],
+                     "why": entry.get("why"),
+                     "outcome": "missed: its moment was " + str(late)
+                                + " minutes ago and the room was not here for "
+                                  "it. It is not owed, it is not moved to "
+                                  "another hour, and it stays in my own block "
+                                  "for a day so that I am told rather than "
+                                  "left to work it out."})
+            continue
+        said = "I asked to be woken now, to look in on: " + str(entry["why"])
+        if late >= 1:
+            said += (" (" + str(late) + (" minute" if late == 1
+                                         else " minutes")
+                     + " late — I asked for " + at.strftime("%H:%M") + " "
+                     + tz_name + ")")
+        if free:
+            said += (". My own time is still running, until "
+                     + str(free.get("until")) + " — this is my own hand and "
+                     "nothing of it is spent.")
+        events.append({
+            "kind": "timer",
+            "key": key,
+            "said": said,
+            # Its own runaway guard, never the free time's two.
+            "budget": "timers",
+            "meta": {"timer": entry["id"], "why": entry.get("why"),
+                     "at": entry["at"], "tz": tz_name, "late_minutes": late},
+            "woken": {"timer": entry["id"], "asked_to_look_at": entry["why"],
+                      "asked_at": entry.get("set"), "due": entry["at"],
+                      "tz": tz_name, "late_minutes": late,
+                      **({"free": free.get("id")} if free else {})},
+        })
+    return events
+
+
+def _timer_outcome(store: dict, event: dict, outcome: str) -> None:
+    """A timer's own record, stamped where the clock decided it. Fired or
+    declined, it stops standing and says which it was: nothing about a timer is
+    left to be inferred, least of all one the backstop would not let speak."""
+    if event.get("kind") != "timer":
+        return
+    want = (event.get("meta") or {}).get("timer")
+    for entry in store.get("timers") or []:
+        if entry.get("id") == want:
+            entry[outcome] = db.now()
+            return
+
+
+def _timer_line(store: dict, entry: dict, now: datetime = None) -> dict:
+    tz_name = entry.get("tz") or DEFAULT_TZ
+    try:
+        at = datetime.fromisoformat(entry["at"])
+    except (ValueError, TypeError, KeyError):
+        at = None
+    out = {"id": entry.get("id"), "why": entry.get("why"),
+           "at": entry.get("at"), "tz": tz_name,
+           "fires": (in_words(at) + " " + tz_name) if at else "unreadable",
+           "state": "standing"}
+    for name in ("cancelled", "missed", "declined"):
+        if entry.get(name):
+            out["state"] = name
+            out[name + "_at"] = entry[name]
+    if out["state"] == "standing":
+        if entry.get("fired") or _done(store, _timer_key(entry)):
+            out["state"] = "fired"
+            out["fired_at"] = entry.get("fired")
+        elif at is not None:
+            out["minutes_away"] = int(
+                (at - (now or _local_now(tz_name))).total_seconds() // 60)
+    if entry.get("late_minutes") is not None:
+        out["late_minutes"] = entry["late_minutes"]
+    if entry.get("replaced_by"):
+        out["replaced_by"] = entry["replaced_by"]
+    return out
+
+
 def stood_down(what: str, why: str, meta: dict = None) -> None:
     """Something the room held back because free time was running. Written
     down, always -- standing down has to be as legible as firing."""
@@ -798,9 +1242,22 @@ def _day(store: dict) -> dict:
     today = _today(store.get("tz"))
     day = store.setdefault("days", {}).setdefault(
         today, {"fired": 0, "declined": 0, "missed": 0})
+    # The timers' own counter, seeded here so a store written before timers
+    # existed reads as a day with none rather than as a day with nothing.
+    day.setdefault("timers", 0)
     for key in [k for k in store["days"] if k != today]:
         del store["days"][key]
     return day
+
+
+# Which runaway guard a firing answers to. Two counters, not one, because they
+# are guarding against two different things: `fired` is how often the *clock*
+# may speak in a day, and `timers` is how often the assistant's own one-shot
+# hand may wake it. A timer spending the free time's two would mean one evening
+# of its own cost it the ability to look in on its own work, which is the
+# opposite of what either of them is for.
+BUDGETS = {"fired": (lambda: FIRINGS_PER_DAY, "firings"),
+           "timers": (lambda: TIMERS_PER_DAY, "timer wake-ups")}
 
 
 # There is no gate here, and the absence is the decision.
@@ -861,6 +1318,11 @@ def _due(conn, free):
     # running.
     events = [e for e in (_again_due(store, free),) if e]
     events += _free_events(store)
+    # Its own one-shot timers, before anything the room wants of it. A moment
+    # the assistant chose outranks a thing that merely came round -- and this
+    # one is asked inside its free time as well as outside it, because it is
+    # its own hand either way and spends nothing of the stretch.
+    events += _timer_events(store, free)
     if not free:
         events += _task_events(conn, store)
 
@@ -878,22 +1340,33 @@ def _due(conn, free):
     # clock; it was never a bound on what the assistant does once its own time
     # has started.
     counts = event.get("counts", True)
+    # And which backstop, when it is one. A timer has its own; everything else
+    # answers to the clock's two.
+    budget = event.get("budget") or "fired"
+    if budget not in BUDGETS:
+        # A guard nobody knows is not a guard. Fall back to the clock's own
+        # two rather than letting a typo in an event become either a crash or
+        # a firing nothing counted.
+        budget = "fired"
+    ceiling, what = BUDGETS[budget][0](), BUDGETS[budget][1]
 
-    if counts and day["fired"] >= FIRINGS_PER_DAY:
+    if counts and day.get(budget, 0) >= ceiling:
         _mark(store, event["key"])
+        _timer_outcome(store, event, "declined")
         day["declined"] += 1
         store["last"] = {"at": db.now(), "said": event["said"],
                          "outcome": "declined"}
         _save(store)
         _ledger({"kind": event["kind"], "said": event["said"],
                  "meta": event.get("meta") or {},
-                 "outcome": "declined: the day's backstop of "
-                            + str(FIRINGS_PER_DAY) + " firings is spent"})
+                 "outcome": "declined: the day's backstop of " + str(ceiling)
+                            + " " + what + " is spent"})
         return None
 
     _mark(store, event["key"])
+    _timer_outcome(store, event, "fired")
     if counts:
-        day["fired"] += 1
+        day[budget] = day.get(budget, 0) + 1
     store["last"] = {"at": db.now(), "said": event["said"],
                      "outcome": "fired" if counts else "carried on"}
     _save(store)
@@ -911,8 +1384,8 @@ def _due(conn, free):
 
     _ledger({"kind": event["kind"], "said": event["said"], "row": row_id,
              "meta": event.get("meta") or {},
-             "outcome": ("fired (" + str(day["fired"]) + " of "
-                         + str(FIRINGS_PER_DAY) + " today)") if counts else
+             "outcome": ("fired (" + str(day.get(budget, 0)) + " of "
+                         + str(ceiling) + " " + what + " today)") if counts else
                         ("carried on inside the free stretch — not a firing, "
                          "and not counted against the day's backstop"),
              # Never a push. A clock firing is for the assistant; a phone
@@ -939,8 +1412,9 @@ def _due(conn, free):
         "row": row_id,
         "narrate": False,
         "chain": 0,
-        "fired_today": day["fired"],
-        "backstop": FIRINGS_PER_DAY,
+        "fired_today": day.get(budget, 0),
+        "backstop": ceiling,
+        "backstop_of": what,
     }
     woken.update(event.get("woken") or {})
     return woken
@@ -1099,6 +1573,13 @@ def apply_her_word(ops) -> list:
                 out = free_cancel(entry_id)
             elif name == "again":
                 out = wake_again(op.get("minutes"))
+            elif name == "timer_set":
+                # `id` here means *replace that standing one*, so changing its
+                # mind about when to look again is one operation, not two.
+                out = timer_set(op.get("minutes"), op.get("why"),
+                                replace=entry_id)
+            elif name == "timer_cancel":
+                out = timer_cancel(entry_id)
             elif name == "accept":
                 out = accept(entry_id)
             elif name == "decline":
@@ -1117,8 +1598,9 @@ def apply_her_word(ops) -> list:
             else:
                 out = {"ok": False,
                        "why": "the clock knows free_set, free_move, "
-                              "free_cancel, again, accept, decline and read. "
-                              "It does not know " + repr(name) + "."}
+                              "free_cancel, again, timer_set, timer_cancel, "
+                              "accept, decline and read. It does not know "
+                              + repr(name) + "."}
         except Exception as exc:
             traceback.print_exc()
             out = {"ok": False, "why": type(exc).__name__ + ": " + str(exc)[:120]}
@@ -1135,6 +1617,8 @@ def for_prompt() -> dict:
         with _LOCK:
             store = _load()
             day = dict(_day(store))
+            _prune_timers(store)
+            timers = [_timer_line(store, e) for e in store.get("timers") or []]
             _save(store)
         free = []
         for entry in store.get("free") or []:
@@ -1163,8 +1647,17 @@ def for_prompt() -> dict:
             "free": free,
             "invitations": invitations,
             "today": {"fired": day["fired"], "declined": day["declined"],
-                      "missed": day["missed"], "backstop": FIRINGS_PER_DAY},
+                      "missed": day["missed"], "backstop": FIRINGS_PER_DAY,
+                      "timers": day.get("timers", 0),
+                      "timer_backstop": TIMERS_PER_DAY},
             "last": store.get("last"),
+            # My one-shot timers: the ones standing, and the ones that
+            # finished in the last day with what became of each -- `fired`,
+            # `cancelled`, `missed` or `declined`. A `missed` one is a moment
+            # of mine the room was not here for; it is said here rather than
+            # only in the ledger, and it is never moved to another hour.
+            "timers": timers,
+            "timers_standing_at_most": TIMERS_STANDING,
             # When I have asked to be awake again inside my own stretch, and
             # when that is. Null the rest of the time, which is most of it.
             "again": store.get("again"),
@@ -1175,6 +1668,7 @@ def for_prompt() -> dict:
     except Exception:
         traceback.print_exc()
         return {"zone": DEFAULT_TZ, "free": [], "invitations": [],
+                "timers": [],
                 "error": "the clock could not be read this turn"}
 
 

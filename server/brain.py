@@ -322,11 +322,16 @@ PROJECT_OP = {
 # would next come round, so a schedule can be checked before it is meant.
 # Every one of these answers with the next firing, because a clock whose next
 # tick cannot be seen is a promise, not an organ.
+# `timer_set` and `timer_cancel` are the one-shot oversight timer: one moment,
+# minutes from now, which wakes the assistant once and tells it why it asked.
+# Free time is a stretch that asks nothing of it; this is the opposite errand
+# -- looking in on work it handed to somebody else -- and the two never touch.
 CLOCK_OP = {
     "type": "object",
     "properties": {
         "op": {"type": "string",
                "enum": ["free_set", "free_move", "free_cancel", "again",
+                        "timer_set", "timer_cancel",
                         "accept", "decline", "read"]},
         # The schedule in words. Strict, and refused out loud when it is not
         # a shape the clock can fire: "every Sunday, 19:00-21:00
@@ -334,17 +339,25 @@ CLOCK_OP = {
         # A zone left unsaid is the home's own, and the answer always names it.
         "words": {"type": ["string", "null"]},
         # Which one: a free interval for `free_move`/`free_cancel`, an
-        # invitation for `accept`/`decline`.
+        # invitation for `accept`/`decline`, a standing timer for
+        # `timer_cancel` -- and, on `timer_set`, the standing timer this one
+        # replaces, so changing its mind is one operation and not two.
         "id": {"type": ["integer", "null"]},
-        # `again` only: how many minutes until the assistant wants to be
-        # awake again, inside the stretch that is already running. Its own,
-        # so that the pacing of its free time is a decision it keeps making
-        # rather than a cadence somebody set for it. It cannot reach past the
+        # `again`: how many minutes until the assistant wants to be awake
+        # again, inside the stretch that is already running. Its own, so that
+        # the pacing of its free time is a decision it keeps making rather
+        # than a cadence somebody set for it. It cannot reach past the
         # stretch's own wall, and it is not a firing -- it never counts
         # against the day's backstop.
+        # `timer_set`: how many minutes from now the one wake-up lands.
         "minutes": {"type": ["integer", "null"]},
+        # `timer_set` only, and required there: why it is asking to be woken,
+        # in its own words. The wake-up is the room handing that sentence back
+        # -- a timer that cannot say what it was for is a nudge for nothing,
+        # so an empty one is refused rather than set.
+        "why": {"type": ["string", "null"]},
     },
-    "required": ["op", "words", "id", "minutes"],
+    "required": ["op", "words", "id", "minutes", "why"],
     "additionalProperties": False,
 }
 
@@ -580,7 +593,10 @@ def SESSION_INSTRUCTIONS() -> str:
     home with its own copy of the harness is told about them too."""
     return ((overmind.INSTRUCTIONS if overmind.offered() else "")
             + (claude_sessions.INSTRUCTIONS if claude_sessions.offered() else "")
-            + notebook.INSTRUCTIONS)
+            + notebook.INSTRUCTIONS
+            # The one-shot timer. Always here: it is the assistant's own hand
+            # and does not wait on anybody switching a door on.
+            + clock.INSTRUCTIONS)
 
 
 def system_prompt(voice_on: bool = False, sound: bool = False, events=()) -> str:

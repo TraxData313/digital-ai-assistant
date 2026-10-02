@@ -6,7 +6,7 @@ calls, store migrations, writes, generic URL access or execution capability.
 import json
 import re
 
-from . import files, jobs, projects, providers, quoted
+from . import clock, files, jobs, projects, providers, quoted
 from . import home
 
 # The prefix of the room's own named references: the kind the assistant's
@@ -25,7 +25,8 @@ TOPICS = {
                  ("## `projects`", "### `project`")),
     "jobs": ("job bookkeeping, decisions and history",
              ("## `jobs`", "### `job`")),
-    "clock": ("free time, invitations, schedules and continuing a stretch",
+    "clock": ("free time, invitations, schedules, continuing a stretch, and the "
+              "one-shot oversight timer",
               ("## `clock`", "### `clock`")),
     "senses": ("current senses, muting and unmuting; Claude quota senses paused",
                ("## `watch`", "### `watch`")),
@@ -38,6 +39,15 @@ TOPICS = {
     "spark": ("deliberate Spark and budget changes", ("### `spark`",)),
     "restart": ("the existing between-turn restart operation", ("### `restart`",)),
 }
+
+
+# The full account of something whose instructions do not live in
+# `harness_prompt.md` at all. A home carries its own copy of that file, so a
+# capability described only there is invisible to the assistant whose home
+# overrode it; these ride in from the module that owns them, and are served
+# here on request rather than carried into every turn -- which is the whole
+# bargain of the compact routine prompt.
+EXTRA = {"clock": clock.REFERENCE}
 
 
 def index() -> str:
@@ -53,14 +63,16 @@ def instructions(topic: str) -> str:
     sections = re.split(r"(?m)(?=^#{1,3} )", source)
     wanted = TOPICS[topic][1]
     found = [section for section in sections if section.startswith(wanted)]
-    if not found:
+    extra = home.fill(EXTRA.get(topic) or "")
+    if not found and not extra:
         raise files.Refused("The operation reference is missing from the room manual: " + topic)
-    return ("Room operation reference: " + topic + ". Source: server/harness_prompt.md.\n"
-            "Use the current output schema. Spark, attribution, safety boundaries and pause reasons still apply.\n"
+    return ("Room operation reference: " + topic + ". Source: server/harness_prompt.md"
+            + (" and the module's own reference.\n" if extra else ".\n")
+            + "Use the current output schema. Spark, attribution, safety boundaries and pause reasons still apply.\n"
             "The compact routine summaries omit detail; read their " + H + " handles for the complete records.\n"
             + ("The current task.clock/parser decides whether schedule words fire; consult the task reference, "
                "not an old example's claim that words never fire.\n" if topic in ("projects", "clock") else "")
-            + "\n" + "\n".join(found))
+            + "\n" + "\n".join(found) + extra)
 
 
 def _preview(text, limit=100):

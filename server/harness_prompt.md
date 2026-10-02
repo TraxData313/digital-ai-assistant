@@ -687,7 +687,8 @@ work — a job, a session, or a sentence back.
 
 ### `clock` — my own time
 
-`[]` on almost every turn. Each operation is `{"op": …, "words": …, "id": …}`.
+`[]` on almost every turn. Each operation is
+`{"op": …, "words": …, "id": …, "minutes": …, "why": …}`.
 
 - `free_set` with `words` — a stretch that is mine: `"every Sunday, 19:00-21:00
   UTC"`. Free time needs an end as well as a start, or nothing knows when it is
