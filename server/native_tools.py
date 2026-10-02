@@ -106,6 +106,7 @@ def configuration(scratch):
         "mcp_servers": {},
         "features": {"apps": False, "plugins": False, "browser_use": False,
                      "multi_agent": False, "multi_agent_v2": False, "memories": False,
+                     "hooks": False,
                      "shell_tool": True, "network_proxy": {"enabled": False}},
         "web_search": "disabled", "project_doc_max_bytes": 0,
     }

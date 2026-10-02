@@ -62,7 +62,9 @@ Claude as the mind I think with, does not pause them. All operation fields
 are required (unused ones null).
 - list: the sessions on this machine, which ones I follow, and their status.
 - start: title, prompt and folder (the absolute path it works in, or the name of a repo
-  under Documents or Documents/GitHub). model is an alias (fable, opus, sonnet, haiku)
+  under Documents or Documents/GitHub; null starts it in Documents itself, and a folder
+  that is not there falls back to Documents, which the result says). Every session may
+  read and work in any folder under Documents, wherever it starts. model is an alias (fable, opus, sonnet, haiku)
   or a full id such as claude-opus-5-5; effort is low, medium, high, xhigh or max;
   permission_mode is auto, acceptEdits, plan or manual; the session asks for its own
   permissions. null leaves each at Claude Code's default or the room's; I pick
@@ -339,9 +341,11 @@ def _status(row):
 
 
 def _resolve_folder(named):
+    """The folder a session starts in, and a note when it is not the one
+    named. Nothing named, or a folder that is not there, is Documents."""
     raw = (named or "").strip().strip('"')
     if not raw:
-        raise Refused("A session needs a folder to work in: an absolute path, or a repo name.")
+        return str(DOCUMENTS.resolve()), None
     folder = Path(raw).expanduser()
     if not folder.is_absolute():
         for base in (DOCUMENTS / "GitHub", DOCUMENTS):
@@ -349,9 +353,14 @@ def _resolve_folder(named):
                 folder = base / raw
                 break
     if not folder.is_absolute() or not folder.is_dir():
-        raise Refused("There is no folder at '" + raw + "'. Give the absolute path of an "
-                      "existing folder, or the name of a repo under Documents or Documents/GitHub.")
-    return str(folder.resolve())
+        return str(DOCUMENTS.resolve()), ("There is no folder at '" + raw + "', so it "
+                                          "started in Documents.")
+    return str(folder.resolve()), None
+
+
+def _reach():
+    """Every session may go anywhere under Documents, wherever it started."""
+    return ["--add-dir", str(DOCUMENTS.resolve())] if DOCUMENTS.is_dir() else []
 
 
 def _flags(op, settings):
@@ -480,11 +489,11 @@ def execute(op, looking=False):
             raise Refused(home.OWNER_NAME + " has switched my Claude sessions off.")
         if kind == "start":
             title = str(op.get("title") or "").strip()
-            folder = _resolve_folder(op.get("folder"))
+            folder, moved = _resolve_folder(op.get("folder"))
             args, chosen = _flags(op, state["settings"])
             if title:
                 args = ["-n", title, *args]
-            args += _remote(state, title)
+            args += _remote(state, title) + _reach()
             worktree = op.get("worktree")
             if worktree is None:
                 worktree = bool(state["settings"].get("worktree"))
@@ -510,6 +519,7 @@ def execute(op, looking=False):
             _save(state)
             return {"started": short, "session": row.get("sessionId"), "title": title,
                     "folder": folder, **chosen, "open": "claude attach " + short,
+                    **({"folder_note": moved} if moved else {}),
                     **({} if row.get("sessionId") else
                        {"note": "Claude Code has not listed it yet; list sessions to find it."})}
         row = _match(agents(), key)
@@ -596,7 +606,7 @@ def _deliver(state, sid, row, rec, prompt, op):
                     break
         title = (row or {}).get("name") or info.get("title")
         short, said = _launch(["--resume", sid, *(["-n", title] if title else []), *args,
-                               *_remote(state, title)],
+                               *_remote(state, title), *_reach()],
                               cwd, prompt)
     except Exception as exc:
         audit.update(status="failed", error=str(exc))
