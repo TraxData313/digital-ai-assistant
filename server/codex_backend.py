@@ -27,14 +27,21 @@ _LIMIT_CACHE = {
 
 def executable():
     override = os.environ.get("ASSISTANT_CODEX_EXE")
-    found = override or shutil.which("codex")
-    if found:
+    if override:
+        return override
+    found = shutil.which("codex")
+    # A .cmd/.bat wrapper on PATH runs inside the native turn's bare
+    # environment (no LOCALAPPDATA, no PSModulePath) and can fail to find the
+    # real binary, so a desktop install's own codex.exe is preferred to it.
+    if found and Path(found).suffix.lower() not in (".cmd", ".bat"):
         return found
     # Desktop installs need not be on the tray process's older PATH.
     root = Path(os.environ.get("LOCALAPPDATA", "")) / "OpenAI/Codex/bin"
     choices = list(root.glob("*/codex.exe"))
     if choices:
         return str(max(choices, key=lambda p: p.stat().st_mtime))
+    if found:
+        return found
     raise providers.TurnBroke("Codex is not installed. Install Codex and run codex login first.")
 
 
