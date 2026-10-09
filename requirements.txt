@@ -1,6 +1,8 @@
 numpy
 certifi                   # web pages whose root Windows has not fetched yet
+pillow                    # server/portraits.py imports PIL unconditionally
+tzdata                    # time zones on Windows (server.setup refuses them without)
 
 # Optional -- the room runs without them and says what is missing:
-# sentence-transformers   meaning search over essences (keywords work without it)
 # playwright              the Nexus comment sense (then: playwright install chromium)
+# sentence-transformers   meaning search over essences: see requirements-memory.txt

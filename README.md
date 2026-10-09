@@ -26,25 +26,65 @@ pip install -r requirements.txt
 
 ### In one go, on a new machine
 
-With this repo and an assistant's home cloned side by side, one command does
-the rest -- packages, the home chosen, its memories from its newest nightly
-backup, its Codex memory plug registered, the shortcut, the manager started:
+With this repo and an assistant's home cloned side by side, a new machine is
+four steps. First the programs it needs (Git, Python, `gh`, Claude Code,
+Tailscale, LM Studio, and the small model), through winget:
 
 ```
 git clone <this repo>
 git clone -c core.longpaths=true <the assistant's private home repo>
 cd digital-ai-assistant
+powershell -ExecutionPolicy Bypass -File tools\install-prereqs.ps1
+```
+
+It installs only what is missing, is safe to run again, and never touches a
+sign-in; it ends with the list of what is left for you: `gh auth login`,
+`claude` signed in, Codex signed in (optional), Tailscale signed in, and
+LM Studio's "start server on login". Do those, then:
+
+```
 python -m server.install ..\<home>
 ```
 
-It says what the machine still lacks (Git, `gh` signed in, Claude Code,
-Codex, LM Studio) rather than installing them, never overwrites a file that
-is there, and is safe to run again. An empty folder becomes a new assistant
-on the way, asking its name and its owner's. Keys are never part of it:
-enter API keys on the Settings page, and pair a phone again.
+That does the rest -- packages (`requirements.txt`, and the meaning-search
+extras in `requirements-memory.txt`; `--no-memory-packages` skips them), the
+home chosen, its memories from its newest nightly backup, its Codex memory
+plug registered, the shortcut, the manager started. It says what the machine
+still lacks rather than installing it, never overwrites a file that is there,
+and is safe to run again. An empty folder becomes a new assistant on the way,
+asking its name and its owner's. Keys are never part of it: enter API keys on
+the Settings page, and pair a phone again.
+
+Claude keeps each project's memory in a folder named after the working
+directory, which includes the Windows user name. The restore kit's copies
+made under another user name are also put under this user's, so they are
+found; nothing already there is replaced.
 
 `python -m server.install <home> --codex-only` registers the Codex plug
 alone, for a machine where Codex was installed after the assistant.
+
+### Tailscale phone
+
+A phone reaches the room over the owner's tailnet, never the open internet.
+Install Tailscale on the machine and on the phone, sign both into the same
+account, then open the room's Settings page and pair the phone there. The
+manager's one address (`http://<machine name>:8787/<slug>/` on the tailnet)
+is all the phone needs.
+
+### What a fresh machine taught us
+
+- **The Store's Python stub.** Windows ships a `python.exe` that opens the
+  Microsoft Store and does nothing. A real Python 3.11+ must come first on
+  `PATH` (the prereq script installs one and checks for the stub).
+- **`lms get` dies in a captured shell.** Run from a tool's captured output it
+  aborts the download. The script starts it detached, with its output in
+  files, and waits for it.
+- **LM Studio's server does not outlive LM Studio.** `lms server start` works
+  for now; turn on "start server on login" in LM Studio so it is there after
+  a reboot.
+- **The room needs Pillow, and Windows needs `tzdata`.** Both are in
+  `requirements.txt`; without them the room crashes at start and `server.setup`
+  refuses every time zone.
 
 ## Make an assistant, or pick one
 

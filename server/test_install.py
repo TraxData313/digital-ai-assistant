@@ -178,6 +178,47 @@ class RestoreKit(unittest.TestCase):
             self.assertFalse((codex / "ada-memory").exists())
 
 
+class ProjectFolders(unittest.TestCase):
+    """Claude's per-project folders follow the Windows user name."""
+
+    NEW = Path("C:/Users/Asus ROG")
+
+    def test_the_name_claude_gives(self):
+        self.assertEqual(install.claude_name(r"C:\Users\Asus ROG\Documents"), "C--Users-Asus-ROG-Documents")
+
+    def test_alias_follows_the_current_user(self):
+        with patch.object(install, "home_dir", lambda: self.NEW):
+            self.assertEqual(install.project_alias("C--Users-Old-Documents-GitHub-x"),
+                             "C--Users-Asus-ROG-Documents-GitHub-x")
+            self.assertEqual(install.project_alias("C--Users-Old-Documents"), "C--Users-Asus-ROG-Documents")
+            self.assertEqual(install.project_alias("C--Users-Asus-ROG-Documents-x"), "")
+            self.assertEqual(install.project_alias("some-other-folder"), "")
+            # a recorded prefix settles a user name that holds dashes
+            self.assertEqual(install.project_alias("C--Users-A-Documents-B-Documents-x", "C--Users-A-Documents-B"),
+                             "C--Users-Asus-ROG-Documents-x")
+
+    def test_kit_copies_projects_under_this_user_and_never_overwrites(self):
+        with tempfile.TemporaryDirectory() as t:
+            t = Path(t)
+            h = make_home(t / "ada")
+            kit = h / "restore" / "dot-claude" / "projects" / "C--Users-Old-Documents-GitHub-x" / "memory"
+            kit.mkdir(parents=True)
+            (kit / "MEMORY.md").write_text("kit", encoding="utf-8")
+            (kit / "b.md").write_text("b", encoding="utf-8")
+            claude = t / "claude"
+            twin = claude / "projects" / "C--Users-Asus-ROG-Documents-GitHub-x" / "memory"
+            twin.mkdir(parents=True)
+            (twin / "MEMORY.md").write_text("mine", encoding="utf-8")
+            with patch.dict(install.KIT_PLACES, {"dot-claude": lambda: claude}, clear=True), \
+                    patch.object(install, "home_dir", lambda: self.NEW):
+                install.put_back_kit(h)
+                install.put_back_kit(h)    # and again: nothing changes
+            self.assertEqual((twin / "MEMORY.md").read_text(encoding="utf-8"), "mine")
+            self.assertEqual((twin / "b.md").read_text(encoding="utf-8"), "b")
+            old = claude / "projects" / "C--Users-Old-Documents-GitHub-x" / "memory"
+            self.assertEqual((old / "MEMORY.md").read_text(encoding="utf-8"), "kit")
+
+
 class Plug(unittest.TestCase):
     def test_names_come_from_the_home(self):
         names = [t["name"] for t in codex_mcp.tools()]

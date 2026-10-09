@@ -11,7 +11,8 @@ second run after fixing whatever the first one reported finishes the job.
   1. what this machine still lacks: Git, the GitHub CLI signed in, Claude
      Code, Codex, LM Studio -- reported, not installed (they want a person's
      sign-in)
-  2. the Python packages in requirements.txt
+  2. the Python packages in requirements.txt, and the memory extras in
+     requirements-memory.txt (meaning search; `--no-memory-packages` skips)
   3. the home chosen (`home.json`); an empty folder becomes a new assistant,
      asking its name and its owner's, as `python -m server.setup` does
   4. its memories: if the home has no store yet, the newest nightly backup
@@ -22,7 +23,9 @@ second run after fixing whatever the first one reported finishes the job.
      the embedder downloads into the usual cache instead of failing
   6. the home's `restore/` kit, if it has one: files that lived outside the
      home (Claude's and Codex's own folders, notes in Documents) put back
-     where they were, only where nothing is there yet
+     where they were, only where nothing is there yet. Claude's per-project
+     folders are named after the working directory, so after the Windows
+     user; each is also copied under this user's name when that differs
   7. the privacy hook, if the home keeps a denylist at `privacy/denylist.txt`
   8. Codex: the memory plug (`server/codex_mcp.py`) registered as an MCP
      server and a SessionStart hook for this home, in Codex's own config
@@ -45,6 +48,7 @@ from pathlib import Path
 
 CODE = Path(__file__).resolve().parent.parent
 REQUIREMENTS = CODE / "requirements.txt"
+MEMORY_REQUIREMENTS = CODE / "requirements-memory.txt"
 PLUG = CODE / "server" / "codex_mcp.py"
 LEGACY_PLUG = "codex_memory_mcp.py"
 WIN = os.name == "nt"
@@ -124,9 +128,18 @@ def check_machine() -> list:
 
 # -- 2. packages -------------------------------------------------------------
 
-def install_packages() -> bool:
-    ok, out, err = run([sys.executable, "-m", "pip", "install", "-q", "-r", str(REQUIREMENTS)], cwd=CODE)
+def install_packages(memory: bool = True) -> bool:
+    """requirements.txt always; requirements-memory.txt (sentence-transformers
+    and CPU torch, for meaning search) too unless asked not to. The memory
+    extras failing is reported but is not a failed install: keywords work."""
+    pip = [sys.executable, "-m", "pip", "install", "-q"]
+    ok, out, err = run(pip + ["-r", str(REQUIREMENTS)], cwd=CODE)
     say("packages", "requirements installed" if ok else "pip failed: " + (err or out)[-400:])
+    if ok and memory and MEMORY_REQUIREMENTS.exists():
+        mok, mout, merr = run(pip + ["-r", str(MEMORY_REQUIREMENTS)], cwd=CODE, timeout=3600)
+        say("packages", "memory extras installed (meaning search)" if mok else
+            "memory extras not installed (keyword search still works; try again later): "
+            + (merr or mout)[-300:])
     return ok
 
 
@@ -261,11 +274,45 @@ def fix_models_folder(folder: Path):
 
 # -- 6. the restore kit ------------------------------------------------------
 
+def home_dir() -> Path:
+    return Path.home()
+
+
+def claude_name(path) -> str:
+    """The folder name Claude gives a project: every character that is not a
+    letter or digit in the working directory's path becomes a dash."""
+    return re.sub(r"[^A-Za-z0-9]", "-", str(path))
+
+
+def project_alias(name: str, old_prefix: str = None, new_prefix: str = None) -> str:
+    """The name of Claude's project folder `name` (made under another Windows
+    user) as this user's Claude will name it, or "" when it is already right
+    or is not a folder under a user's home. The old prefix is what the kit
+    recorded (`restore/old-home.txt`) if it did, else the part between
+    `<drive>--Users-` and `-Documents`."""
+    new_prefix = new_prefix or claude_name(home_dir())
+    if old_prefix and (name == old_prefix or name.startswith(old_prefix + "-")):
+        old = old_prefix
+    else:
+        m = re.match(r"^([A-Za-z]--Users-.+?)-Documents(-|$)", name)
+        if not m:
+            return ""
+        old = m.group(1)
+    if old == new_prefix:
+        return ""
+    return new_prefix + name[len(old):]
+
+
 def put_back_kit(folder: Path):
     kit = folder / "restore"
     if not kit.is_dir():
         return
     added = kept = 0
+    old_prefix = None
+    try:
+        old_prefix = claude_name((kit / "old-home.txt").read_text(encoding="utf-8").strip()) or None
+    except OSError:
+        pass
     for f in sorted(kit.rglob("*")):
         if not f.is_file():
             continue
@@ -277,12 +324,25 @@ def put_back_kit(folder: Path):
         if not place or not rest:
             continue
         dest = place() / rest
-        if dest.exists():
-            kept += 1
-            continue
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(f, dest)
-        added += 1
+        # Claude names a project's memory folder after the working directory,
+        # so one made under another Windows user is unused here: a copy goes
+        # under the name this user's Claude will look for.
+        twin = None
+        if top == "dot-claude":
+            parts = rest.split("/", 2)
+            if len(parts) == 3 and parts[0] == "projects":
+                alias = project_alias(parts[1], old_prefix)
+                if alias:
+                    twin = place() / "projects" / alias / parts[2]
+        for target in (dest, twin):
+            if target is None:
+                continue
+            if target.exists():
+                kept += 1
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(f, target)
+            added += 1
     say("restore kit", f"{added} files put back, {kept} already there and kept")
 
 
@@ -447,6 +507,8 @@ def main(argv=None) -> int:
     ap.add_argument("--backup", help="a backup release tag to restore, instead of the newest")
     ap.add_argument("--codex-only", action="store_true", help="only register with Codex")
     ap.add_argument("--no-packages", action="store_true")
+    ap.add_argument("--no-memory-packages", action="store_true",
+                    help="skip requirements-memory.txt (sentence-transformers and torch, a large download)")
     ap.add_argument("--no-codex", action="store_true")
     ap.add_argument("--no-shortcut", action="store_true")
     ap.add_argument("--no-start", action="store_true")
@@ -461,7 +523,7 @@ def main(argv=None) -> int:
         return 0 if register_codex(folder) else 1
 
     missing = check_machine()
-    if not args.no_packages and not install_packages():
+    if not args.no_packages and not install_packages(not args.no_memory_packages):
         return 1
     if not choose_home(folder, args.yes):
         return 1

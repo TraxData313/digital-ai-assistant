@@ -1,0 +1,5 @@
+# Meaning search over essences (keywords work without it). server.install
+# installs this too, unless given --no-memory-packages.
+# CPU-only torch is far smaller than the default build.
+--extra-index-url https://download.pytorch.org/whl/cpu
+sentence-transformers
