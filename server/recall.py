@@ -89,7 +89,10 @@ COMMON = 0.2
 MORE = 10
 
 CONTEXT = 8192
-MAX_OUT = 600
+# Gemma 4 thinks before it answers, and LM Studio counts that thinking against
+# max_tokens: at 600 the thinking alone often ate the budget and the JSON came
+# back cut off. The prompt (about 2.4k) plus this still sits well inside CONTEXT.
+MAX_OUT = 2500
 
 # How often the room re-asks LM Studio whether the model is still there, and
 # only while a page is open on it: every ten seconds while something is
@@ -703,6 +706,9 @@ def _complete(key: str, messages: list, schema: dict, name: str,
     try:
         return json.loads(text)
     except json.JSONDecodeError:
+        if choice.get("finish_reason") == "length":
+            raise LMError("the model ran out of tokens before it finished its answer: "
+                          + text[:200])
         raise LMError("the model's answer was not the JSON asked for: " + text[:200])
 
 
