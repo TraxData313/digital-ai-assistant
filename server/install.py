@@ -195,8 +195,13 @@ def restore_memories(folder: Path, tag: str = None) -> bool:
         say("memories", f"a store is already here ({store.stat().st_size // 1_000_000} MB); left as it is")
     else:
         slug = identity(folder).get("slug") or folder.name.lower()
+        ok, remotes, _ = run(["git", "remote"], cwd=folder, timeout=30)
+        if not (ok and remotes.strip()):
+            say("memories", "a new home with no remote yet: it starts with no memories, and its "
+                            "nightly backup has nowhere to go until it has a private remote")
+            return True
         if not shutil.which("gh"):
-            say("memories", "no store and no gh to fetch one; it will start with no memories")
+            say("memories", "no store and no gh to fetch one; install gh, sign in, and run this again")
             return False
         try:
             tags = _backup_tags(folder, slug)
