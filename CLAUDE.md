@@ -44,7 +44,9 @@ To test server code, run a side room on a spare port over a *copy* of a
 store, with no turn loop: `OneRoom(("127.0.0.1", 0), Handler)` after pointing
 `db.DB_PATH` at the copy, and never `main()`. To look at the manager, run a
 side one with its own list: `ASSISTANT_REGISTRY=<scratch>\homes.json` and
-`python -m server.manager --port <spare> --no-icon`, over made-up homes.
+`python -m server.manager --port <spare> --no-icon`, over made-up homes. Set
+`ASSISTANT_HOME=<a made-up home>` too: without it the side manager also loads the
+home `home.json` points to, finds its live room on the list and would adopt it.
 
 The page asks for everything relative to where it is (`api/state`, not
 `/api/state`), so the same page works at `/ava/` and at `/`. A new URL in

@@ -781,8 +781,12 @@ class Handler(BaseHTTPRequestHandler):
     def _paired(self, key):
         """A good key came in the URL: keep it in a cookie and send the device
         back to the bare address, so the key is not left in the bar, in the
-        history, or in whatever gets pasted next."""
-        bare = self._prefix() + (urlparse(self.path).path or "/")
+        history, or in whatever gets pasted next.
+
+        The address is bare, never wearing this room's prefix: the manager
+        puts its slug on any root-relative Location it passes on, so a prefix
+        said here would arrive doubled (/slug/slug/) and land on a 404."""
+        bare = urlparse(self.path).path or "/"
         self.send_response(302)
         self.send_header("Location", bare)
         self.send_header(

@@ -459,8 +459,36 @@ def main():
         check("room: a room with no manager's key refuses anything claiming one", code == 403, code)
         os.environ["ASSISTANT_MANAGER_KEY"] = K
         code, _, got, _ = ask(rp, "GET", "/?k=" + sam, headers=said(who=""))
-        check("room: pairing through the manager lands back in its own place",
-              code == 302 and got.get("location") == slug + "/", (code, got))
+        check("room: pairing through the manager redirects bare -- the manager adds the place",
+              code == 302 and got.get("location") == "/", (code, got))
+        # The real room behind a real door: the final target must carry the
+        # slug once, not twice.
+        class Lodger:
+            mode, port, slug, home = "ours", rp, home.SLUG, None
+
+            def look(self):
+                return {"phase": "awake"}
+
+        class Lodgings:
+            def by_slug(self, s):
+                return Lodger() if s == home.SLUG else None
+
+            def all(self):
+                return []
+
+        front = manager.Door(("127.0.0.1", 0), manager.DoorHandler)
+        front.keeper = Lodgings()
+        threading.Thread(target=front.serve_forever, daemon=True).start()
+        os.environ["ASSISTANT_MANAGER_KEY"] = manager.KEY  # the key a real door sends
+        try:
+            code, _, got, _ = ask(front.server_port, "GET", slug + "/?k=" + sam)
+            check("room: pairing through a real door lands on its place once, not doubled",
+                  code == 302 and got.get("location") == slug + "/"
+                  and got.get("set-cookie", "").startswith(home.COOKIE + "=" + sam), (code, got))
+        finally:
+            os.environ["ASSISTANT_MANAGER_KEY"] = K
+            front.shutdown()
+            front.server_close()
         code, raw, _, _ = ask(rp, "GET", "/", headers=said())
         text = raw.decode("utf-8", "replace")
         check("room: the page knows it sits behind the manager",
