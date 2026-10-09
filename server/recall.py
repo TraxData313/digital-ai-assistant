@@ -62,7 +62,7 @@ KEYS = {m["key"]: m for m in MODELS}
 
 KNOBS = {
     # the hard limit, seconds; a turn never waits longer than this for it
-    "timeout_s":  {"default": 20.0, "min": 1.0, "max": 60.0, "type": float},
+    "timeout_s":  {"default": 60.0, "min": 1.0, "max": 60.0, "type": float},
     # how many of the last lines of the room the writer reads
     "lines":      {"default": 5, "min": 1, "max": 12, "type": int},
     # and how many the reviewer reads to judge what came back against

@@ -10,7 +10,7 @@ assert.ok(start >= 0 && end > start, 'the automatic memory Settings helpers are 
 // The room's side, as server/recall.py keeps it: each knob held to its
 // bounds, a count to a whole number, and `reset` puts back the defaults.
 const BOUNDS = {
-  timeout_s: {min: 1, max: 60, default: 20, float: true},
+  timeout_s: {min: 1, max: 60, default: 60, float: true},
   lines: {min: 1, max: 12, default: 5},
   review_lines: {min: 1, max: 12, default: 5},
   top: {min: 1, max: 10, default: 3},
