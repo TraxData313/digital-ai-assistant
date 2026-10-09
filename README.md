@@ -24,6 +24,28 @@ cd digital-ai-assistant
 pip install -r requirements.txt
 ```
 
+### In one go, on a new machine
+
+With this repo and an assistant's home cloned side by side, one command does
+the rest -- packages, the home chosen, its memories from its newest nightly
+backup, its Codex memory plug registered, the shortcut, the manager started:
+
+```
+git clone <this repo>
+git clone -c core.longpaths=true <the assistant's private home repo>
+cd digital-ai-assistant
+python -m server.install ..\<home>
+```
+
+It says what the machine still lacks (Git, `gh` signed in, Claude Code,
+Codex, LM Studio) rather than installing them, never overwrites a file that
+is there, and is safe to run again. An empty folder becomes a new assistant
+on the way, asking its name and its owner's. Keys are never part of it:
+enter API keys on the Settings page, and pair a phone again.
+
+`python -m server.install <home> --codex-only` registers the Codex plug
+alone, for a machine where Codex was installed after the assistant.
+
 ## Make an assistant, or pick one
 
 Point setup at a folder. An empty folder -- or a freshly created empty repo --

@@ -3,6 +3,11 @@
 `README.md` is what it is and how to install it. This is the handful of
 things that save an hour.
 
+**Asked to install** this code and an assistant's home on a machine: clone
+both side by side (the home with `-c core.longpaths=true`), then
+`python -m server.install <home>` from here. It reports what it cannot do
+itself (sign-ins, LM Studio's model); do those, then run it again.
+
 ## The home is not the code
 
 Everything an assistant *is* lives in its home folder (`server/home.py` says
