@@ -12,6 +12,7 @@ server/passwords.py
 # Local Codex / Claude runtime state the room may create beside the code.
 .codex/
 .claude/settings.local.json
+.claude/worktrees/
 
 # Everything below belongs in a home folder, never beside the code. Listed so
 # that a room started the old way cannot leave a store in a commit.
