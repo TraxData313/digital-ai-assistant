@@ -748,7 +748,8 @@ body.dropping #app { outline: 2px dashed var(--person); outline-offset: -6px; }
     width: min(84vw, 320px); box-sizing: border-box; overflow-y: auto;
     padding: calc(14px + env(safe-area-inset-top)) 14px
              calc(14px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left));
-    background: var(--glass-solid);
+    /* Solid, not glass: at .92 the chat's letters still read through it. */
+    background: rgb(28, 25, 22);
     border-right: 1px solid var(--line);
     box-shadow: 8px 0 32px rgba(0, 0, 0, .45);
     transform: translateX(-105%); visibility: hidden;
@@ -1564,7 +1565,7 @@ a.res-val:hover { color: var(--ink); }
     display: none; position: absolute; z-index: 5;
     right: calc(8px + env(safe-area-inset-right)); bottom: calc(100% + 6px);
     height: 50px; box-sizing: border-box; padding: 4px 6px; gap: 2px;
-    background: var(--glass-solid); box-shadow: 0 8px 24px rgba(0, 0, 0, .4);
+    background: rgb(28, 25, 22); box-shadow: 0 8px 24px rgba(0, 0, 0, .4);
   }
   footer.voice-open #voice-tools { display: flex; }
   #voice-tools button { width: 40px; height: 40px; }
