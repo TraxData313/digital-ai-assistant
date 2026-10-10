@@ -129,6 +129,9 @@
           <button id="voice-picker" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="voice-menu" aria-label="Choose voice: Sol" title="Choose voice">Sol</button>
           <button id="voice-volume-toggle" class="voice-icon" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="voice-volume-panel" aria-label="Voice volume: 100%" title="Volume"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m11 4-5 4H3v8h3l5 4z"/><path class="speaker-waves" d="M15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/><path class="speaker-slash" d="m16 9 5 6m0-6-5 6"/></svg></button>
         </div>
+        <!-- A phone folds the voice bar away behind this one icon; above
+             700px it is not drawn and the bar sits in the row as before. -->
+        <button id="voice-fold" class="voice-fold" type="button" aria-expanded="false" aria-controls="voice-tools" aria-label="Voice controls" title="Voice controls"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/></svg></button>
         <button id="send">send</button>
       </div>
       <p id="voice-status" class="voice-quiet" role="status" aria-live="polite">Voice off.</p>

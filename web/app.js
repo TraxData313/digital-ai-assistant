@@ -4857,6 +4857,27 @@ document.addEventListener("keydown", (e) => {
 });
 PHONE.addEventListener("change", (e) => { if (!e.matches) closeDrawer(); });
 
+// The phone's voice fold: the voice bar and its line tucked behind one icon
+// in the pill, floating above it while open. A tap anywhere outside the
+// footer or Escape folds it again -- unless a voice popover is up, which
+// takes the Escape first. Above 700px the icon is not drawn.
+const VOICE_FOLD = $("voice-fold");
+const FOOTER = VOICE_FOLD.closest("footer");
+function foldVoice(open) {
+  FOOTER.classList.toggle("voice-open", open);
+  VOICE_FOLD.setAttribute("aria-expanded", open ? "true" : "false");
+}
+VOICE_FOLD.onclick = () => foldVoice(!FOOTER.classList.contains("voice-open"));
+document.addEventListener("pointerdown", (e) => {
+  if (FOOTER.classList.contains("voice-open") && !FOOTER.contains(e.target)) foldVoice(false);
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape" || !FOOTER.classList.contains("voice-open")) return;
+  if (FOOTER.querySelector(".voice-popover:popover-open")) return;
+  foldVoice(false);
+  if (FOOTER.contains(document.activeElement)) VOICE_FOLD.focus({preventScroll: true});
+});
+
 // The keyboard. A phone shrinks the visible window when it opens one and does
 // not tell the layout, so the composer ends up underneath it. visualViewport
 // does know, and --vh hands the real height to the CSS. Above 700px this

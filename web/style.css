@@ -101,9 +101,9 @@ header {
 .head-left { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 /* The phone's bar and drawer. Above 700px the drawer has no box -- its
    children are this column's own, as before -- and the bar's buttons and the
-   dim behind the drawer are not drawn at all. */
+   dim behind the drawer are not drawn at all; nor is the voice fold. */
 .drawer { display: contents; }
-.bar-icon, .drawer-backdrop { display: none; }
+.bar-icon, .drawer-backdrop, .voice-fold { display: none; }
 h1 { font-size: 17px; margin: 0; letter-spacing: .14em; color: var(--self); font-weight: 600; }
 /* Wrapping, not clipping, at every width. Four things sat on this row --
    Chat, Projects, Settings and the person pill -- and on a phone the pill
@@ -808,18 +808,50 @@ body.dropping #app { outline: 2px dashed var(--person); outline-offset: -6px; }
   #usage .bar { height: 2px; }
 
   .view { padding: 12px calc(14px + env(safe-area-inset-right)) 18px calc(14px + env(safe-area-inset-left)); }
-  footer { padding-left: calc(10px + env(safe-area-inset-left)); padding-right: calc(10px + env(safe-area-inset-right)); }
-  .composer { gap: 8px; }
-  #send { padding: 0 16px; }
+  /* The composer is one pill at the foot of the screen, the way a phone's
+     chat apps have it: the + inside on the left, the words, then the voice
+     icon and a round send inside on the right. No grip -- the box grows by
+     itself up to half the screen. */
+  footer {
+    position: relative; border-top: 0; background: none;
+    padding: 0 calc(8px + env(safe-area-inset-right))
+             calc(8px + env(safe-area-inset-bottom)) calc(8px + env(safe-area-inset-left));
+  }
+  #grip { display: none; }
+  .tray { padding-top: 8px; }
+  .composer {
+    align-items: flex-end; gap: 2px; padding: 5px;
+    border-radius: 26px; background: var(--well);
+    border: 1px solid color-mix(in srgb, var(--person) 45%, transparent);
+  }
+  .composer:focus-within { border-color: var(--person); }
+  /* 16px or the phone zooms the whole page when the box takes focus. */
+  #input {
+    min-width: 0; min-height: 40px; padding: 8px 4px 7px; line-height: 1.3;
+    border: 0; border-radius: 0; background: none; font-size: 18px;
+  }
+  /* One line of hint, cut short, so an empty box is one line tall. */
+  #input::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* The + is the only way in on a phone -- nothing to paste from, nothing to
-     drag -- so it keeps its full height while everything around it narrows. */
-  #attach { width: 34px; font-size: 23px; }
+     drag -- so it is a full tap target even without a border. */
+  #attach, .voice-fold {
+    display: grid; place-items: center; flex: none;
+    width: 40px; height: 40px; padding: 0; border: 0; border-radius: 50%;
+    background: none; cursor: pointer;
+  }
+  #attach { font-size: 27px; font-weight: 300; }
+  #attach:hover, .voice-fold:hover, .voice-fold[aria-expanded="true"] { background: rgba(255, 255, 255, .08); }
+  .voice-fold { color: var(--dim); }
+  .voice-fold svg { width: 21px; height: 21px; }
+  .composer:has(#voice-tools[data-state="on"]) .voice-fold { color: var(--self); }
+  /* Send keeps its word as its name and draws an arrow instead. */
+  #send {
+    width: 40px; height: 40px; padding: 0; border-radius: 50%; font-size: 0;
+    background: var(--person) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231a1310' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 19V5M5.5 11.5 12 5l6.5 6.5'/%3E%3C/svg%3E") center / 21px no-repeat;
+  }
   .chip { max-width: 100%; }
   .chip-name { max-width: 100px; }
   .pic img { max-width: 100%; max-height: 220px; }
-  /* 16px or the phone zooms the whole page when the box takes focus. */
-  textarea { font-size: 19px; }
-  #grip { height: 20px; margin: 0 -10px 3px; }
   .act .when { display: none; }
   .act-body { max-height: 68vh; max-height: 68dvh; }
 }
@@ -1524,13 +1556,22 @@ a.res-val:hover { color: var(--ink); }
 #voice-volume { display:block; width:100%; height:28px; margin:0; accent-color:var(--self); cursor:pointer; }
 #voice-retry, #voice-local-retry, #voice-sound { border:1px solid var(--line); border-radius:8px; color:var(--self); background:transparent; font:inherit; padding:6px 10px; margin-top:10px; cursor:pointer; }
 @media (max-width:700px) {
-  .composer { display:grid; grid-template-columns:34px minmax(0,1fr) auto; grid-template-areas:"attach input send" ". voice voice"; gap:8px; }
-  #attach { grid-area:attach; }
-  #input { grid-area:input; min-width:0; }
-  #send { grid-area:send; }
-  #voice-tools { grid-area:voice; justify-self:end; }
-  #voice-tools button { width:36px; height:36px; }
-  #voice-tools { height:44px; }
+  /* The voice bar folds away behind its icon. Opened, it floats above the
+     pill on the right, over the end of the chat; its lines -- "the voice is
+     off", why -- sit just above the pill. A warning or an error shows even
+     folded: those are not to be missed. */
+  #voice-tools {
+    display: none; position: absolute; z-index: 5;
+    right: calc(8px + env(safe-area-inset-right)); bottom: calc(100% + 6px);
+    height: 50px; box-sizing: border-box; padding: 4px 6px; gap: 2px;
+    background: var(--glass-solid); box-shadow: 0 8px 24px rgba(0, 0, 0, .4);
+  }
+  footer.voice-open #voice-tools { display: flex; }
+  #voice-tools button { width: 40px; height: 40px; }
+  #voice-backend { height: 40px; border-radius: 20px; }
+  #voice-status, .voice-app { order: -1; margin: 0 12px 6px; }
+  .voice-app:not(.warn) { display: none; }
+  footer.voice-open .voice-app:not(.hidden) { display: block; }
 }
 
 /* --- the portrait and the name open things ----------------------------------
