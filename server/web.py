@@ -488,10 +488,16 @@ def _search(spec: dict, conn=None) -> dict:
 
     cost = envelope.get("total_cost_usd") or 0
     if envelope.get("is_error") or envelope.get("subtype") != "success":
+        # An error envelope often says "success" in its subtype and puts the real
+        # reason (not signed in, bad model, budget...) in `result`. Without it a
+        # failed run and an empty one read the same.
+        why = str(envelope.get("result") or proc.stderr or "").strip()[:300]
         raise Refused(
             "The search ended as " + str(envelope.get("subtype") or "a failure")
+            + (" but flagged an error" if envelope.get("is_error") else "")
             + " after " + str(took) + "s. It spent $" + format(cost, ".4f")
-            + " and came back with nothing I can use.")
+            + " and came back with nothing I can use."
+            + (" The tool said: " + why if why else " The tool gave no reason."))
 
     body = _unfence(envelope.get("result") or "")
     answer, results, notes = None, [], []
