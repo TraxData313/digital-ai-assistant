@@ -33,6 +33,22 @@ class SearchFailureIsExplained(unittest.TestCase):
         r = self.search({"subtype": "success", "is_error": True, "total_cost_usd": 0})
         self.assertIn("no reason", r["refused"])
 
+    def test_a_lost_sign_in_race_is_retried_once(self):
+        envelopes = [
+            {"subtype": "success", "is_error": True, "total_cost_usd": 0,
+             "result": "Failed to refresh OAuth token: another Claude Code process"},
+            {"subtype": "success", "is_error": False, "total_cost_usd": 0.04,
+             "result": json.dumps({"answer": "100 degrees Celsius.", "results": []})}]
+
+        def fake(argv, **kw):
+            return subprocess.CompletedProcess(argv, 0, json.dumps(envelopes.pop(0)), "")
+        with mock.patch.object(brain, "find_claude", return_value="claude"), \
+                mock.patch.object(web.subprocess, "run", fake), \
+                mock.patch.object(web, "OAUTH_RETRY_SECONDS", 0):
+            r = web.run({"op": "search", "query": "boiling point of water"})
+        self.assertNotIn("refused", r)
+        self.assertEqual(envelopes, [])
+
     def test_good_answer_still_comes_through(self):
         body = json.dumps({"answer": "100 degrees Celsius.", "results": []})
         r = self.search({"subtype": "success", "is_error": False,

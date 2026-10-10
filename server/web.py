@@ -50,10 +50,13 @@ from . import home
 # What a search costs and how long it may take. Small and short: this happens while
 # the assistant is mid-turn and a person is watching a progress line, so a search that
 # thinks for two minutes is a search it will stop using.
-SEARCH_MODEL = "haiku"
+# Haiku gave up on spam-heavy result pages ("answer": null over real links); a
+# stronger reader sorts the good pages from the junk.
+SEARCH_MODEL = "sonnet"
 SEARCH_MAX_TURNS = 6
 SEARCH_MAX_BUDGET_USD = 0.25
 SEARCH_SECONDS = 120
+OAUTH_RETRY_SECONDS = 15
 MAX_RESULTS = 6
 
 # One page. The cap on bytes is a fetch that never finishes; the cap on tokens is a
@@ -445,8 +448,10 @@ def _search(spec: dict, conn=None) -> dict:
         "Return ONLY a JSON object, no prose around it, shaped exactly like this:\n"
         '{"answer": "at most three sentences, or null if the search found nothing",\n'
         ' "results": [{"title": "...", "url": "...", "snippet": "one or two lines"}]}\n'
-        "At most " + str(MAX_RESULTS) + " results, best first. If the search comes "
-        "back with nothing, say so in `answer` and return an empty list -- do not "
+        "At most " + str(MAX_RESULTS) + " results, best first. Results are often "
+        "padded with spam or junk pages: skip those, keep the reputable ones, and "
+        "search again in other words if the first page is all junk. If the search "
+        "still comes back with nothing, say so in `answer` and return an empty list -- do not "
         "offer the nearest thing you know instead. Quote what the pages say; do not "
         "add what you already believe.")
 
@@ -468,23 +473,31 @@ def _search(spec: dict, conn=None) -> dict:
     ]
 
     started = time.time()
-    try:
-        proc = subprocess.run(
-            argv, input=prompt, capture_output=True, text=True, encoding="utf-8",
-            errors="replace", timeout=SEARCH_SECONDS, cwd=str(brain.ROOT))
-    except subprocess.TimeoutExpired:
-        raise Refused("The search did not come back within " + str(SEARCH_SECONDS)
-                      + " seconds, so it was stopped. That is a stuck search, not an "
-                      "empty one, and I do not read an answer into it.")
-    took = round(time.time() - started, 1)
+    for attempt in range(2):
+        try:
+            proc = subprocess.run(
+                argv, input=prompt, capture_output=True, text=True, encoding="utf-8",
+                errors="replace", timeout=SEARCH_SECONDS, cwd=str(brain.ROOT))
+        except subprocess.TimeoutExpired:
+            raise Refused("The search did not come back within " + str(SEARCH_SECONDS)
+                          + " seconds, so it was stopped. That is a stuck search, not an "
+                          "empty one, and I do not read an answer into it.")
 
-    try:
-        envelope = json.loads(proc.stdout)
-    except json.JSONDecodeError:
-        raise Refused("The search came back as something I could not read"
-                      + (" (" + proc.stderr.strip()[:200] + ")" if proc.stderr.strip()
-                         else "") + ". Nothing of it is trustworthy, so none of it "
-                      "was kept.")
+        try:
+            envelope = json.loads(proc.stdout)
+        except json.JSONDecodeError:
+            raise Refused("The search came back as something I could not read"
+                          + (" (" + proc.stderr.strip()[:200] + ")" if proc.stderr.strip()
+                             else "") + ". Nothing of it is trustworthy, so none of it "
+                          "was kept.")
+        # Several Claude processes refreshing one sign-in at once lose the race and
+        # say so; it clears in seconds, so one patient retry turns it into an answer.
+        if attempt == 0 and envelope.get("is_error") and \
+                "refresh OAuth token" in str(envelope.get("result") or ""):
+            time.sleep(OAUTH_RETRY_SECONDS)
+            continue
+        break
+    took = round(time.time() - started, 1)
 
     cost = envelope.get("total_cost_usd") or 0
     if envelope.get("is_error") or envelope.get("subtype") != "success":
