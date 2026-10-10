@@ -261,10 +261,10 @@
     const claude = (data.claude && data.claude.settings) || {};
     const row = el('label', '', 'Claude Code starts in ', box);
     const mode = el('select', '', '', row);
-    for (const [v, t] of [['auto', 'auto mode'], ['acceptEdits', 'accept edits'], ['plan', 'plan mode'], ['manual', 'asking for each permission']]) {
+    for (const [v, t] of [['bypassPermissions', 'no questions (as you)'], ['auto', 'auto mode'], ['acceptEdits', 'accept edits'], ['plan', 'plan mode'], ['manual', 'asking for each permission']]) {
       const o = el('option', '', t, mode); o.value = v;
     }
-    mode.value = claude.permission_mode || 'auto';
+    mode.value = claude.permission_mode || 'bypassPermissions';
     mode.onchange = () => post('api/claude', {action: 'settings', permission_mode: mode.value}).catch(e => alertLine(e.message));
     const wt = el('label', '', '', box);
     const check = el('input', '', '', wt); check.type = 'checkbox'; check.checked = !!claude.worktree;

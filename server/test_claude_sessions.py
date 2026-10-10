@@ -77,7 +77,7 @@ class SessionTests(unittest.TestCase):
         args, cwd = self.fake.calls[0]
         self.assertEqual(args[:1], ["--bg"])
         for flag, value in (("-n", "a title"), ("--model", "opus"), ("--effort", "max"),
-                            ("--permission-mode", "auto"), ("--remote-control", "a title")):
+                            ("--permission-mode", "bypassPermissions"), ("--remote-control", "a title")):
             self.assertEqual(args[args.index(flag) + 1], value)
         self.assertTrue(args[-1].endswith(": do the thing"))
         self.assertEqual(cwd, str(self.work))
