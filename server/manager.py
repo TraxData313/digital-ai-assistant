@@ -864,7 +864,10 @@ class DoorHandler(BaseHTTPRequestHandler):
         a = self.keeper.by_slug(seg) if SLUG.match(seg) else None
         if not a:
             return self._send(404, b"not here")
-        if path == "/" + seg:
+        # A room's page at its place said twice (/slug/slug/) is the address
+        # an older pairing redirect left in phones' tabs and home screens; it
+        # is sent home rather than answered "not here" for ever.
+        if path in ("/" + seg, "/" + seg + "/" + seg, "/" + seg + "/" + seg + "/"):
             return self._redirect("/" + seg + "/" + ("?" + url.query if url.query else ""))
         rest = path[len(seg) + 1:] + ("?" + url.query if url.query else "")
         return self._pass(ip, a, rest)

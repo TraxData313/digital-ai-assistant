@@ -211,6 +211,10 @@ def main():
         # -- passing on ------------------------------------------------------------------
         code, _, got, _ = ask(door_port, "GET", "/finch", me)
         check("an assistant's bare name gets its slash", code == 302 and got.get("location") == "/finch/", got)
+        for twice in ("/finch/finch/", "/finch/finch"):
+            code, _, got, _ = ask(door_port, "GET", twice, me)
+            check("its place said twice is sent home: " + twice,
+                  code == 302 and got.get("location") == "/finch/", (code, got))
         code, _, _, e = ask(door_port, "GET", "/finch/api/echo?x=1", me,
                             headers={"X-Assistant-Who": "evil", "X-Assistant-Manager": "nope",
                                      "X-Assistant-Peer": "100.64.0.1"})
