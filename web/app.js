@@ -4284,6 +4284,10 @@ function show(which) {
     if (tab) tab.classList.toggle("active", which === v);
   }
   shown = which;
+  // The phone's bar hides its way back to the chat while on the chat, and a
+  // place picked from the drawer closes it.
+  document.body.dataset.view = which;
+  closeDrawer();
   clearInterval(devTimer);
   if (window.showSessions) window.showSessions(which === "sessions");
   if (which === "projects") {
@@ -4785,6 +4789,7 @@ $("person").onchange = () => {
   // turns to them too -- unless it holds something unsaved, which stays.
   if (shown === "dev") renderDev();
   MAIN.scrollTop = MAIN.scrollHeight;
+  closeDrawer();
   BOX.focus();
 };
 applyWho();
@@ -4819,6 +4824,38 @@ $("tab-projects").onclick = () => show("projects");
 $("tab-sessions").onclick = () => show("sessions");
 $("tab-dev").onclick = () => show("dev");
 $("recall").onclick = () => { OPEN.add("dev:recall"); show("dev"); };
+
+// The phone's drawer: the tabs, the person switch and the instruments, off
+// the left edge until the bar's menu button brings them in. Picking a place,
+// the dim beside it, Escape, or the window growing past a phone's width
+// closes it. Above 700px the button is not drawn and nothing here runs.
+const DRAWER_TOGGLE = $("drawer-toggle");
+const DRAWER_DIM = $("drawer-backdrop");
+const PHONE = window.matchMedia("(max-width: 700px)");
+function openDrawer() {
+  document.body.classList.add("drawer-open");
+  DRAWER_DIM.hidden = false;
+  DRAWER_TOGGLE.setAttribute("aria-expanded", "true");
+  const here = document.querySelector("#drawer .tab.active");
+  if (here) here.focus({preventScroll: true});
+}
+function closeDrawer() {
+  if (!document.body.classList.contains("drawer-open")) return;
+  const inside = $("drawer").contains(document.activeElement);
+  document.body.classList.remove("drawer-open");
+  DRAWER_DIM.hidden = true;
+  DRAWER_TOGGLE.setAttribute("aria-expanded", "false");
+  if (inside) DRAWER_TOGGLE.focus({preventScroll: true});
+}
+DRAWER_TOGGLE.onclick = () => {
+  if (document.body.classList.contains("drawer-open")) closeDrawer(); else openDrawer();
+};
+DRAWER_DIM.onclick = closeDrawer;
+$("bar-chat").onclick = () => show("chat");
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && document.body.classList.contains("drawer-open")) closeDrawer();
+});
+PHONE.addEventListener("change", (e) => { if (!e.matches) closeDrawer(); });
 
 // The keyboard. A phone shrinks the visible window when it opens one and does
 // not tell the layout, so the composer ends up underneath it. visualViewport

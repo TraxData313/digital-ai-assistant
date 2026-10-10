@@ -20,9 +20,17 @@
 <!-- Whose room this is, filled in by the room when it serves the page. -->
 <script>window.ASSISTANT = {{identity_json}};</script>
 </head>
-<body class="plain">
+<body class="plain" data-view="chat">
   <div id="app">
     <header>
+      <!-- A phone's whole header is one slim bar: this opens the drawer that
+           holds the tabs, the person switch and the instruments. Drawn only
+           under 700px; a desktop never sees it. -->
+      <button id="drawer-toggle" class="drawer-toggle bar-icon" type="button"
+              aria-controls="drawer" aria-expanded="false" aria-label="Open the menu">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"
+             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
       <!-- The very circle the voice app wears, ring baked in -- one face on
            every window of the assistant. -->
       <!-- Tapped, it offers the portrait and the background to change. -->
@@ -41,6 +49,10 @@
                       class="caret" aria-hidden="true">&#9662;</span></button></h1>
           <div id="assistant-menu" class="assistant-menu" role="menu" hidden></div>
         </div>
+        <!-- The drawer. On a desktop it is display:contents -- no box of its
+             own, its children sit in this column exactly as they always
+             did. On a phone it slides in from the left. -->
+        <div id="drawer" class="drawer">
         <nav>
           <button id="tab-chat" class="tab active">Chat</button>
           <!-- Their own work, beside the talking: projects, the notes box
@@ -54,11 +66,6 @@
                spare. The switches out of plain live at the top of this
                tab's view, not up here. -->
           <button id="tab-dev" class="tab">Menu</button>
-          <!-- A break with no size, so the person switch below starts its own
-               line on a phone instead of being pushed off the right edge.
-               Drawn only under 700px; on a desktop it is display:none and the
-               row is exactly what it was. -->
-          <span class="nav-break" aria-hidden="true"></span>
           <!-- Who is writing. A pick here signs every line sent after it and
                recolors the whole chat. Free on purpose -- attribution,
                not a lock. -->
@@ -72,13 +79,21 @@
         <!-- The automatic memory: which small model, and whether it is loaded.
              An instrument, so it is drawn only when the gauges are on. -->
         <div id="recall" class="recall off" title="the automatic memory — details under Menu"></div>
+        </div>
         <!-- How to pair a phone lives at the top of Settings now: read once
              when a phone is paired, furniture after. Still only ever drawn
              on this machine itself -- a key is never shown over the wire. -->
       </div>
       <!-- The model, how full its context is, and the plan's own windows -->
       <div id="usage"></div>
+      <!-- Phone only, and only away from the chat: one tap back to it. -->
+      <button id="bar-chat" class="bar-chat bar-icon" type="button" aria-label="Back to the chat">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8l-4 3.5V16H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"
+             fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+      </button>
     </header>
+    <!-- The dim behind an open drawer; a tap on it closes the drawer. -->
+    <div id="drawer-backdrop" class="drawer-backdrop" hidden></div>
 
     <main id="main">
       <section id="view-chat" class="view"></section>

@@ -99,16 +99,17 @@ header {
           drop-shadow(0 4px 10px rgba(0, 0, 0, .40));
 }
 .head-left { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+/* The phone's bar and drawer. Above 700px the drawer has no box -- its
+   children are this column's own, as before -- and the bar's buttons and the
+   dim behind the drawer are not drawn at all. */
+.drawer { display: contents; }
+.bar-icon, .drawer-backdrop { display: none; }
 h1 { font-size: 17px; margin: 0; letter-spacing: .14em; color: var(--self); font-weight: 600; }
 /* Wrapping, not clipping, at every width. Four things sat on this row --
    Chat, Projects, Settings and the person pill -- and on a phone the pill
    slid off the right edge showing half a name. A row that runs out of width now
    folds; it never hides what is on it. */
 nav { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-/* Zero-sized, and the whole trick: a flex item with a full-width basis ends
-   the line it is on, so what follows starts a new one. Nothing is drawn.
-   Only under 700px -- above that the header row is exactly as it was. */
-.nav-break { display: none; }
 .tab {
   background: none; border: 1px solid var(--line); color: var(--dim);
   padding: 3px 14px; border-radius: 999px; cursor: pointer; font-size: 15.5px;
@@ -680,8 +681,8 @@ body.dropping #app { outline: 2px dashed var(--person); outline-offset: -6px; }
 }
 
 /* --- the phone, laid out for 390px wide ---------------------------------
-   Nothing here is hidden. The header stacks: portrait and words on the first
-   row, the gauges shrunk to a full-width strip under them. --vh is set by
+   Nothing here is lost. The header is one slim bar and everything else it
+   held is one tap away in the drawer. --vh is set by
    app.js from visualViewport so the composer sits on top of the keyboard
    rather than under it; 100dvh is the answer when there is no script yet. */
 @media (max-width: 700px) {
@@ -696,19 +697,109 @@ body.dropping #app { outline: 2px dashed var(--person); outline-offset: -6px; }
     width: 100vw; height: 100dvh; height: var(--vh, 100dvh);
     border-radius: 0; border: none;
   }
-  header { flex-wrap: wrap; gap: 10px; padding-bottom: 8px; }
-  #portrait { width: 48px; height: 48px; }
-  h1 { font-size: 14.5px; }
-  .head-left { flex: 1; gap: 4px; }
-  .tab { padding: 3px 11px; font-size: 14.5px; }
+  /* One slim bar, the way a phone's chat apps have it: the menu left, the
+     face and the name in the middle, the way back to the chat right. The
+     rest -- tabs, the person switch, the instruments -- is in the drawer. */
+  header {
+    flex-wrap: nowrap; gap: 8px; align-items: center;
+    padding: calc(6px + env(safe-area-inset-top)) calc(8px + env(safe-area-inset-right))
+             6px calc(8px + env(safe-area-inset-left));
+    border-bottom-color: rgba(255, 255, 255, .05);
+  }
+  .bar-icon {
+    display: grid; place-items: center; flex: none;
+    width: 42px; height: 42px; padding: 0; border-radius: 50%;
+    border: 0; background: none; color: var(--ink); cursor: pointer;
+  }
+  .bar-icon:hover, .bar-icon:focus-visible { background: rgba(255, 255, 255, .08); outline: none; }
+  .bar-icon[aria-expanded="true"] { background: rgba(255, 255, 255, .08); }
+  /* Both icons hold their width even when the right one is not drawn, so
+     the face and the name stay in the middle of the bar. */
+  body[data-view="chat"] .bar-chat { visibility: hidden; }
+  .portrait-button { margin-left: auto; }
+  #portrait { width: 30px; height: 30px; filter: drop-shadow(0 0 6px rgba(125, 223, 180, .25)); }
+  .head-left { flex: 0 1 auto; flex-direction: row; align-items: center; gap: 0; }
+  h1 { font-size: 15px; letter-spacing: .1em; white-space: nowrap; }
+  .assistant-pick { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; min-height: 40px; }
+  .assistant-switch { min-width: 0; }
+  .bar-chat { margin-left: auto; }
+  /* Centred under a centred name, the list of assistants would hang off the
+     right edge; it takes the width of the screen instead. */
+  .assistant-menu {
+    position: fixed; top: calc(56px + env(safe-area-inset-top)); left: 8px; right: 8px;
+    min-width: 0; max-width: none;
+  }
 
-  .session-indicator, #recall { max-width: none; width: 100%; font-size: 14px; }
+  /* Something waiting -- a stored notice on Projects, a session running --
+     is still seen from the chat: an ember dot on the menu, no script needed. */
+  .drawer-toggle { position: relative; }
+  header:has(.tab-mark) .drawer-toggle::after,
+  header:has(#sessions-indicator.running) .drawer-toggle::after {
+    content: ""; position: absolute; top: 9px; right: 8px;
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--ember); box-shadow: 0 0 0 2px rgba(22, 19, 17, .9);
+  }
 
-  /* The gauges are shrunk, not dropped: same numbers, one line each. */
+  /* The drawer: off the left edge until opened, and not focusable while
+     it is there (visibility waits for the slide out before it hides). */
+  .drawer {
+    display: flex; flex-direction: column; gap: 14px;
+    position: fixed; top: 0; bottom: 0; left: 0; z-index: 70;
+    width: min(84vw, 320px); box-sizing: border-box; overflow-y: auto;
+    padding: calc(14px + env(safe-area-inset-top)) 14px
+             calc(14px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left));
+    background: var(--glass-solid);
+    border-right: 1px solid var(--line);
+    box-shadow: 8px 0 32px rgba(0, 0, 0, .45);
+    transform: translateX(-105%); visibility: hidden;
+    transition: transform .22s ease, visibility 0s linear .22s;
+  }
+  body.drawer-open .drawer {
+    transform: none; visibility: visible;
+    transition: transform .22s ease;
+  }
+  .drawer-backdrop {
+    display: block; position: fixed; inset: 0; z-index: 65;
+    background: rgba(0, 0, 0, .45);
+  }
+  .drawer-backdrop[hidden] { display: none; }
+  /* The tabs as a list, one full-width row each, the place you are in lit. */
+  .drawer nav { flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: 2px; }
+  .drawer .tab {
+    display: flex; align-items: center; min-height: 44px; padding: 0 14px;
+    border: 0; border-radius: 12px; text-align: left;
+    font-size: 16.5px; color: var(--ink);
+  }
+  .drawer .tab:hover { background: rgba(255, 255, 255, .06); }
+  .drawer .tab.active { background: rgba(255, 255, 255, .1); }
+  .drawer .tab.active::before {
+    content: ""; width: 3px; height: 18px; border-radius: 2px;
+    background: var(--person); margin: 0 11px 0 -6px;
+  }
+  .person-pick {
+    margin: 10px 0 0; min-height: 42px; padding: 0 12px; border-radius: 12px;
+    font-size: 16px; max-width: 100%; background: var(--well);
+  }
+  /* Rows of the list too, 40px tall to be tapped; a line above each. */
+  .session-indicator, #recall {
+    max-width: none; width: 100%; box-sizing: border-box;
+    font-size: 14.5px; line-height: 40px; padding: 0 14px;
+    border-top: 1px solid var(--line);
+  }
+
+  /* The gauges stay a sibling of the header's column -- moving them into the
+     drawer would move them on the desktop too -- so on a phone they are
+     pinned to the drawer's foot and drawn only while it is open. Same
+     numbers, one line each. */
   #usage {
-    width: 100%; margin-left: 0; flex-basis: 100%;
+    display: none; position: fixed; left: 0; bottom: 0; z-index: 71;
+    width: min(84vw, 320px); box-sizing: border-box; margin-left: 0;
+    padding: 10px 14px calc(12px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left));
+    border-top: 1px solid var(--line); background: var(--glass-solid);
     font-size: 12.5px; gap: 3px;
   }
+  body.gauges.drawer-open #usage { display: flex; }
+  body.gauges .drawer { padding-bottom: 190px; }
   #usage .model { font-size: 13px; }
   #usage .model .plan { font-size: 12px; }
   #usage .win { grid-template-columns: minmax(0, 1fr) auto auto; gap: 0 6px; }
@@ -726,12 +817,6 @@ body.dropping #app { outline: 2px dashed var(--person); outline-offset: -6px; }
   .chip { max-width: 100%; }
   .chip-name { max-width: 100px; }
   .pic img { max-width: 100%; max-height: 220px; }
-  /* The person switch gets its own line under the tabs, at any width, and
-     keeps its left edge with them. Never clipped: it is the one control that
-     says whose words the next line will be, and half a name is not an
-     answer to that. */
-  .nav-break { display: block; flex-basis: 100%; width: 100%; height: 0; margin: 0; }
-  .person-pick { font-size: 14.5px; padding: 2px 8px; margin-left: 0; max-width: 100%; }
   /* 16px or the phone zooms the whole page when the box takes focus. */
   textarea { font-size: 19px; }
   #grip { height: 20px; margin: 0 -10px 3px; }
