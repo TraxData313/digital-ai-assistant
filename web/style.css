@@ -1652,3 +1652,99 @@ a.res-val:hover { color: var(--ink); }
   .assistant-menu { left: 0; }
   .portrait-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
+
+/* --- Menu on a phone ----------------------------------------------------------
+   Read the way a phone's settings screen reads: full-width cards, each a row
+   with its name and a chevron, what it says underneath; label left and value
+   right where the value is short, one under the other where it is prose;
+   every control a finger's width tall; nothing wider than its card. The desk
+   above 700px is untouched. */
+@media (max-width: 700px) {
+  #view-dev { padding-left: calc(10px + env(safe-area-inset-left)); padding-right: calc(10px + env(safe-area-inset-right)); }
+  #view-dev .workings-row { gap: 8px; }
+  #view-dev .workings-row .tab { min-height: 40px; padding: 0 16px; border-radius: 20px; }
+  #view-dev .pair { overflow-wrap: anywhere; margin: 0 4px 12px; }
+
+  #view-dev .dev { border-radius: 14px; margin-bottom: 10px; background: rgba(20, 17, 15, .62); }
+  /* The row: name on top, what it says under it, the chevron on the right. */
+  #view-dev .dev > summary {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 3px;
+    align-items: center; min-height: 52px; box-sizing: border-box; padding: 11px 14px;
+  }
+  #view-dev .dev > summary::before {
+    grid-column: 2; grid-row: 1; width: auto; font-size: 15px;
+  }
+  #view-dev .dev > summary:has(.sub)::before { grid-row: 1 / span 2; }
+  #view-dev .dev > summary .sub { grid-column: 1; font-size: 15px; overflow-wrap: anywhere; }
+  #view-dev .dev > .inner { padding: 2px 14px 14px; overflow-wrap: break-word; }
+
+  /* Facts: name left, value right, the name wrapping first. Prose values --
+     how the memory works, why the voice is off -- go under their name. */
+  #view-dev .facts { grid-template-columns: minmax(min(9.5em, 45%), 1fr) auto; gap: 0; }
+  #view-dev .facts dt, #view-dev .facts dd { padding: 7px 0; border-top: 1px solid rgba(232, 226, 219, .07); }
+  #view-dev .facts dt:first-of-type, #view-dev .facts dd:first-of-type { border-top: 0; }
+  #view-dev .facts dd { max-width: 60vw; padding-left: 14px; text-align: right; overflow-wrap: anywhere; }
+  #view-dev [data-k="dev:recall"] .facts, #view-dev [data-k="dev:voice"] .facts { grid-template-columns: minmax(0, 1fr); }
+  #view-dev [data-k="dev:recall"] .facts dd, #view-dev [data-k="dev:voice"] .facts dd {
+    max-width: none; padding-left: 0; text-align: left; border-top: 0; padding-top: 0;
+  }
+
+  /* A fold's front: who and when on one line, its first words under them. */
+  #view-dev .fold > summary, #view-dev .ess > summary { flex-wrap: wrap; row-gap: 2px; min-height: 40px; padding: 6px 0; box-sizing: border-box; align-content: center; }
+  #view-dev .fold .body, #view-dev .ess .body, #view-dev .prose { overflow-wrap: anywhere; }
+  #view-dev .prose code { box-sizing: border-box; }
+  #view-dev .fold .lbl { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; }
+  #view-dev .fold .txt { order: 3; flex: 1 0 100%; padding-left: 18px; box-sizing: border-box; }
+  #view-dev .ess .title { flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; }
+  #view-dev .ess .meta { order: 3; flex: 1 0 100%; margin-left: 0; padding-left: 22px; box-sizing: border-box; }
+
+  /* Controls a finger can hit, and 16px type in every box so the phone does
+     not zoom the page when one takes focus. */
+  #view-dev .btn, #view-dev .small-btn, #view-dev .prov-key-save, #view-dev .prov-key-clear,
+  #view-dev .prov-credit-save, #view-dev .prov-credit-clear, #view-dev #prov-refresh,
+  #view-dev #native-stop-settings, #view-dev .wallpaper-upload button {
+    min-height: 40px; padding: 0 16px; border-radius: 10px; font-size: 15px;
+  }
+  #view-dev #native-stop-settings {
+    cursor: pointer; border: 1px solid var(--line); background: rgba(255, 255, 255, .06); color: var(--ink);
+  }
+  #view-dev input[type="text"], #view-dev input[type="password"], #view-dev input:not([type]),
+  #view-dev textarea, #view-dev select {
+    font-size: 16px; min-height: 40px; box-sizing: border-box;
+  }
+  #view-dev textarea { min-height: 80px; }
+  #view-dev #prov-pick, #view-dev #prov-dream { width: 100%; min-height: 44px; }
+  #view-dev label:has(> input[type="checkbox"]) { display: inline-flex; align-items: center; gap: 10px; min-height: 40px; }
+  #view-dev input[type="checkbox"] { width: 20px; height: 20px; margin: 0; flex: none; }
+  /* A box and its button share a line: the box takes what is left. */
+  #view-dev .prov-key p:has(> .prov-key-box), #view-dev p:has(> .prov-credit) { display: flex; flex-wrap: wrap; gap: 8px; }
+  #view-dev .prov-key-box, #view-dev .prov-credit { flex: 1 1 150px; width: auto; min-width: 0; }
+
+  /* The automatic memory's knobs: one per row, the name left, the box right. */
+  #view-dev .recall-row.knobs { flex-direction: column; align-items: stretch; gap: 6px; }
+  #view-dev .recall-row.knobs label { justify-content: space-between; }
+  #view-dev .recall-row.knobs input { width: 96px; text-align: right; }
+  #view-dev .recall-row.knobs .small-btn { align-self: flex-start; }
+  #view-dev .recall-row label:has(select) { flex: 1 1 auto; min-width: 0; }
+  #view-dev .recall-row select { min-width: 0; flex: 1 1 auto; }
+  #view-dev .recall-row input.path { flex: 1 1 auto; min-width: 0; }
+  #view-dev .recall-row label:has(input.path) { flex: 1 1 100%; }
+  #view-dev .try-search .try-line .try-field { flex: 1 1 140px; }
+  #view-dev .try-search .try-line .try-field input { width: 100%; box-sizing: border-box; }
+  #view-dev .nb-cap input { font-size: 16px; }
+  #view-dev .nb-table th button { min-height: 36px; }
+
+  /* The catalogue, two lines a mind: name and room on top, the price under. */
+  #view-dev .prov-table, #view-dev .prov-table tbody { display: block; width: 100%; }
+  #view-dev .prov-table tr {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px;
+    padding: 8px 6px; border-top: 1px solid var(--line);
+  }
+  #view-dev .prov-table tr.on { background: rgba(240, 149, 74, .07); border-radius: 6px; }
+  #view-dev .prov-table td { padding: 0; border: 0; background: none; }
+  #view-dev .prov-table .nm { white-space: normal; overflow-wrap: anywhere; }
+  #view-dev .prov-table .cx { grid-column: 2; grid-row: 1; }
+  #view-dev .prov-table .cx:empty { display: none; }
+  #view-dev .prov-table .pr { grid-column: 1 / -1; white-space: normal; color: var(--dim); font-size: 14.5px; }
+  #view-dev .prov-table .svc { display: inline; margin-left: 6px; }
+}
