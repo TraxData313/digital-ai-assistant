@@ -263,50 +263,43 @@ OLD_KEY_SLOTS = {"openai_admin_key": "openai_admin"}
 # same model: their own door has no price list and a made-up number is worse
 # than a borrowed one.
 MODELS = [
-    {"key": "codex/gpt-6-astra", "service": "codex",
-     "id": "gpt-6-astra", "label": "Astra (subscription)",
-     "about": "OpenAI's most capable model through your ChatGPT subscription. "
-              "Requires codex login.",
-     "price_key": "openai/gpt-6-astra"},
-    {"key": "codex/gpt-6.1-sol", "service": "codex",
-     "id": "gpt-6.1-sol", "label": "GPT-6.1 Sol (subscription)",
-     "about": "The everyday workhorse, a version on from GPT-6 Sol, through "
-              "your ChatGPT subscription. Requires codex login.",
-     "price_key": "openai/gpt-6.1-sol"},
-    {"key": "codex/gpt-6-sol", "service": "codex",
-     "id": "gpt-6-sol", "label": "GPT-6 Sol (subscription)",
-     "about": "The everyday workhorse through your ChatGPT subscription. "
-              "Requires codex login.",
-     "price_key": "openai/gpt-6-sol"},
+    # -- the subscription. Only what Codex itself lists for a ChatGPT login
+    # (`~/.codex/models_cache.json`); asking it for anything else is a 400
+    # on every turn. --
     {"key": "codex/gpt-6-luna", "service": "codex",
      "id": "gpt-6-luna", "label": "GPT-6 Luna (subscription)",
      "about": "Fast and light through your ChatGPT subscription, for easier "
               "work. Requires codex login.",
      "price_key": "openai/gpt-6-luna"},
-    {"key": "codex/gpt-5.6-sol", "service": "codex",
-     "id": "gpt-5.6-sol", "label": "Sol (subscription)",
-     "about": "Sol through your ChatGPT subscription. Requires codex login.",
-     "price_key": "openai/gpt-5.6-sol"},
     {"key": "codex/gpt-5.6-terra", "service": "codex",
      "id": "gpt-5.6-terra", "label": "Terra (subscription)",
      "about": "Terra through your ChatGPT subscription. Requires codex login.",
      "price_key": "openai/gpt-5.6-terra"},
+    {"key": "codex/gpt-5.6-luna", "service": "codex",
+     "id": "gpt-5.6-luna", "label": "Luna (subscription)",
+     "about": "The lightest one through your ChatGPT subscription. Requires "
+              "codex login.",
+     "price_key": "openai/gpt-5.6-luna"},
     # -- the plan --
-    {"key": "claude_code/claude-opus-5", "service": "claude_code",
-     "id": "claude-opus-5", "label": "Opus 5",
-     "about": "The default mind. Deep and steady, and the model the room "
+    {"key": "claude_code/claude-opus-5-5", "service": "claude_code",
+     "id": "claude-opus-5-5", "label": "Opus 5.5",
+     "about": "The default mind. Deep and steady, and the line the room "
               "was first built on.",
-     "price_key": "anthropic/claude-opus-5"},
+     "price_key": "anthropic/claude-opus-5.5"},
     {"key": "claude_code/claude-fable-5-1", "service": "claude_code",
      "id": "claude-fable-5-1", "label": "Fable 5.1",
      "about": "Thinks before it speaks, always, and spends the plan's windows "
               "fastest of anything here.",
      "price_key": "anthropic/claude-fable-5.1"},
-    {"key": "claude_code/claude-sonnet-5", "service": "claude_code",
-     "id": "claude-sonnet-5", "label": "Sonnet 5",
+    {"key": "claude_code/claude-sonnet-5-5", "service": "claude_code",
+     "id": "claude-sonnet-5-5", "label": "Sonnet 5.5",
      "about": "Lighter and quicker than Opus, and a good deal cheaper against "
               "the weekly window.",
-     "price_key": "anthropic/claude-sonnet-5"},
+     "price_key": "anthropic/claude-sonnet-5.5"},
+    {"key": "claude_code/claude-haiku-5-5", "service": "claude_code",
+     "id": "claude-haiku-5-5", "label": "Haiku 5.5",
+     "about": "The quickest and lightest on the plan, for easy work.",
+     "price_key": "anthropic/claude-haiku-5.5"},
 
     # -- OpenAI's own door --
     {"key": "openai/gpt-5.6-terra", "service": "openai",
@@ -321,12 +314,12 @@ MODELS = [
     # -- the router. Peers, not the cheap seats: only models in the same
     # class as Terra, Sol, Opus and Fable, so nothing from the mini/nano/lite
     # tier is listed here. --
-    {"key": "openrouter/anthropic/claude-opus-5", "service": "openrouter",
-     "id": "anthropic/claude-opus-5", "label": "Opus 5 (router)",
+    {"key": "openrouter/anthropic/claude-opus-5.5", "service": "openrouter",
+     "id": "anthropic/claude-opus-5.5", "label": "Opus 5.5 (router)",
      "about": "The same mind as home, reached by the paid road instead of the "
               "plan -- which is what to switch to when the weekly window is "
               "spent mid-conversation.",
-     "price_key": "anthropic/claude-opus-5"},
+     "price_key": "anthropic/claude-opus-5.5"},
     {"key": "openrouter/anthropic/claude-fable-5.1", "service": "openrouter",
      "id": "anthropic/claude-fable-5.1", "label": "Fable 5.1 (router)",
      "about": "Fable off the plan's windows and onto a bill.",
@@ -363,22 +356,52 @@ MODELS = [
      "price_key": "deepseek/deepseek-v4-pro"},
 ]
 
-BY_KEY = {m["key"]: m for m in MODELS}
+# No longer offered, still known: rows stamped with these keys keep their
+# label and their price, and a home still set to one of them still resolves.
+# The Codex ones are refused for a ChatGPT login since 2026-10-10.
+RETIRED = [
+    {"key": "codex/gpt-6-astra", "service": "codex",
+     "id": "gpt-6-astra", "label": "Astra (subscription)", "about": None,
+     "price_key": "openai/gpt-6-astra"},
+    {"key": "codex/gpt-6.1-sol", "service": "codex",
+     "id": "gpt-6.1-sol", "label": "GPT-6.1 Sol (subscription)", "about": None,
+     "price_key": "openai/gpt-6.1-sol"},
+    {"key": "codex/gpt-6-sol", "service": "codex",
+     "id": "gpt-6-sol", "label": "GPT-6 Sol (subscription)", "about": None,
+     "price_key": "openai/gpt-6-sol"},
+    {"key": "codex/gpt-5.6-sol", "service": "codex",
+     "id": "gpt-5.6-sol", "label": "Sol (subscription)", "about": None,
+     "price_key": "openai/gpt-5.6-sol"},
+    {"key": "claude_code/claude-opus-5", "service": "claude_code",
+     "id": "claude-opus-5", "label": "Opus 5", "about": None,
+     "price_key": "anthropic/claude-opus-5"},
+    {"key": "claude_code/claude-sonnet-5", "service": "claude_code",
+     "id": "claude-sonnet-5", "label": "Sonnet 5", "about": None,
+     "price_key": "anthropic/claude-sonnet-5"},
+    {"key": "openrouter/anthropic/claude-opus-5", "service": "openrouter",
+     "id": "anthropic/claude-opus-5", "label": "Opus 5 (router)", "about": None,
+     "price_key": "anthropic/claude-opus-5"},
+]
+
+BY_KEY = {m["key"]: m for m in RETIRED + MODELS}
 
 # The model used before this file existed. Changing this changes who answers
 # when nobody has chosen, which is a thing to do on purpose.
-DEFAULT_KEY = "claude_code/claude-opus-5"
+DEFAULT_KEY = "claude_code/claude-opus-5-5"
 
 # The old shorthands, from back when the model was a bare CLI alias. A store
 # full of rows stamped "opus" still has to resolve to something.
 ALIASES = {
-    "opus": "claude_code/claude-opus-5",
-    "sonnet": "claude_code/claude-sonnet-5",
-    "haiku": "claude_code/claude-haiku-4-5",
+    "opus": "claude_code/claude-opus-5-5",
+    "sonnet": "claude_code/claude-sonnet-5-5",
+    "haiku": "claude_code/claude-haiku-5-5",
     "fable": "claude_code/claude-fable-5-1",
     "claude-opus-5": "claude_code/claude-opus-5",
     "claude-sonnet-5": "claude_code/claude-sonnet-5",
     "claude-fable-5-1": "claude_code/claude-fable-5-1",
+    "claude-opus-5-5": "claude_code/claude-opus-5-5",
+    "claude-sonnet-5-5": "claude_code/claude-sonnet-5-5",
+    "claude-haiku-5-5": "claude_code/claude-haiku-5-5",
 }
 
 

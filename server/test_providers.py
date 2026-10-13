@@ -38,7 +38,7 @@ def bench_resolve():
     check("a full key resolves", r["id"] == "claude-opus-5"
           and r["service"] == "claude_code", r["label"])
     check("the old bare alias still names a real model",
-          providers.resolve("opus")["key"] == "claude_code/claude-opus-5",
+          providers.resolve("opus")["key"] == "claude_code/claude-opus-5-5",
           'rows written before this existed say "opus"')
     check("nothing at all is the default",
           providers.resolve("")["key"] == providers.DEFAULT_KEY)
