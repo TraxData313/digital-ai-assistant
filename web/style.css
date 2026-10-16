@@ -344,8 +344,11 @@ details.act > summary { cursor: pointer; }
   font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums;
   color: var(--faint); border: 1px solid var(--line);
 }
-.act .rc-count.hot { color: #fff; background: var(--bad); border-color: var(--bad);
-  box-shadow: 0 0 8px rgba(255,123,107,.55); }
+/* In use, but not a pick-up: already held, or it came in another way. */
+.act .rc-count.used { color: var(--ember); border-color: rgba(240,149,74,.55); }
+/* A pick-up: not held when suggested, and brought back. The one to notice. */
+.act .rc-count.picked { color: #0f1a14; background: var(--mint); border-color: var(--mint);
+  box-shadow: 0 0 9px rgba(125,223,180,.6); }
 .act.world { border-left-color: rgba(230,192,122,.55); }
 .act.world .lbl { color: #e6c07a; }
 .act.job { border-left-color: rgba(129,199,132,.55); }
@@ -390,6 +393,8 @@ details.act > summary { cursor: pointer; }
   display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 4px;
   font-size: 12.5px; background: rgba(240,149,74,.2); color: var(--ember);
 }
+.rc .rc-pulled.picked { background: rgba(125,223,180,.2); color: var(--mint); font-weight: 600; }
+.rc .rc-picks { color: var(--mint); }
 .rc .recall-more { margin: 6px 0 2px 54px; padding: 1px 8px; }
 .rc .rc-raw { margin-top: 8px; }
 .rc .rc-raw > summary { cursor: pointer; color: var(--faint); font-size: 13.5px; }

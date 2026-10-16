@@ -605,18 +605,35 @@ let LOADED_ESS = new Set();
 
 function useOf(d, r) {
   const how = pulledOf(d, r);
-  if (how) return MY_NAME + " pulled it \u00b7 " + how;
-  if (LOADED_ESS.has(r.id)) return "in " + MY_NAME + "'s memory now";
+  if (pickedOf(d, r)) return "✦ " + MY_NAME + " picked it up · not held before · " + how;
+  if (how) return MY_NAME + " pulled it · " + how + (r.in_hand ? " · already held" : "");
+  if (LOADED_ESS.has(r.id)) {
+    return "in " + MY_NAME + "'s memory now · " +
+      (r.in_hand ? "held all along" : "came in later");
+  }
   return null;
+}
+
+// The moment the automatic memory is for: a suggestion that was not in hand,
+// brought back by the assistant. Cards from before `picked` was written are
+// read off what they have: pulled, and not in hand when suggested.
+function pickedOf(d, r) {
+  const p = d.after && d.after.picked;
+  if (Array.isArray(p)) return p.includes(r.id);
+  return !!pulledOf(d, r) && !r.in_hand;
 }
 
 function recallBadge(d) {
   if (!d || !d.asked || !Array.isArray(d.results)) return "";
   const used = d.results.map((r) => [r, useOf(d, r)]).filter(([, u]) => u);
+  const picks = d.results.filter((r) => pickedOf(d, r)).length;
   const title = used.length
-    ? used.map(([r, u]) => "#" + r.id + " \u2014 " + u).join("\n")
+    ? used.map(([r, u]) => "#" + r.id + " — " + u).join("\n")
     : "none of these suggestions was pulled, and none is in " + MY_NAME + "'s memory now";
-  return `<span class="rc-count${used.length ? " hot" : ""}" title="${esc(title)}">${used.length}</span>`;
+  if (picks) {
+    return `<span class="rc-count picked" title="${esc(title)}">✦ ${picks}</span>`;
+  }
+  return `<span class="rc-count${used.length ? " used" : ""}" title="${esc(title)}">${used.length}</span>`;
 }
 
 function pulledOf(d, r) {
@@ -670,6 +687,9 @@ function recallText(d) {
   if (d.after) {
     const others = d.after.pulled_not_suggested || [];
     if (!Object.keys(d.after.pulled || {}).length) out.push("", MY_NAME + " pulled none of these.");
+    const picks = (d.results || []).filter((r) => pickedOf(d, r));
+    if (picks.length) out.push("", MY_NAME + " picked up, not held before: " +
+      picks.map((r) => "#" + r.id).join(", "));
     if (others.length) out.push("", MY_NAME + " also pulled, not suggested: " +
       others.map((o) => "#" + o.id + " " + o.name + " (" + o.how + ")").join("; "));
   }
@@ -686,7 +706,7 @@ function recallRowHtml(r, reviewed, pulled) {
     : `<span class="rc-want none"></span>`;
   return `<div class="rc-row">${want}<div class="rc-main">` +
     `<div class="rc-name"><span class="rc-id">#${esc(r.id)}</span> ${esc(r.name)}` +
-    (pulled ? ` <span class="rc-pulled">${esc(pulled)}</span>` : "") + `</div>` +
+    (pulled ? ` <span class="rc-pulled${pulled.startsWith("✦") ? " picked" : ""}">${esc(pulled)}</span>` : "") + `</div>` +
     `<div class="rc-facts">${esc(recallFacts(r))}</div>` +
     (r.note ? `<div class="rc-note">${esc(r.note)}</div>` : "") + `</div></div>`;
 }
@@ -718,6 +738,12 @@ function recallHtml(d, key) {
   if (d.after) {
     const others = d.after.pulled_not_suggested || [];
     h += `<div class="cap">What ${esc(MY_NAME)} did with it</div>`;
+    const picks = res.filter((r) => pickedOf(d, r));
+    if (picks.length) {
+      h += `<div class="rc-facts rc-picks">✦ ${esc(MY_NAME)} picked up ` +
+        `${esc(picks.map((r) => "#" + r.id).join(", "))}, not held before — ` +
+        `the automatic memory brought ${picks.length === 1 ? "it" : "them"} back</div>`;
+    }
     if (!Object.keys(d.after.pulled || {}).length) {
       h += `<div class="rc-facts">${esc(MY_NAME)} pulled none of these</div>`;
     }

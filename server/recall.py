@@ -926,13 +926,22 @@ def after_turn(conn, block: dict, looked: list, kept, reply_row=None) -> dict:
     for report in looked or []:
         read |= _reached(report)
     kept_ids = _reached(kept)
+    brought = set()
+    for report in list(looked or []) + [kept]:
+        brought |= set((report or {}).get("brought_back") or [])
     suggested = [r["id"] for r in block.get("results") or []]
-    pulled = {}
+    held = {r["id"] for r in block.get("results") or [] if r.get("in_hand")}
+    pulled, picked = {}, []
     for i in suggested:
         if i in read:
             pulled[str(i)] = "while looking"
         elif i in kept_ids:
             pulled[str(i)] = "kept after answering"
+        # The moment the automatic memory is for: it was not in hand when
+        # suggested, and the assistant brought it back. Pulled but already
+        # held, or reached only through another essence, is not this.
+        if str(i) in pulled and i not in held and i in brought:
+            picked.append(i)
     other_ids = sorted((read | kept_ids) - set(suggested))
     others = []
     if other_ids:
@@ -941,7 +950,7 @@ def after_turn(conn, block: dict, looked: list, kept, reply_row=None) -> dict:
                               " AND id IN (" + marks + ")", other_ids):
             others.append({"id": r["id"], "name": name_of(dict(r)), "date": _local(r["dt"]),
                            "how": "while looking" if r["id"] in read else "kept after answering"})
-    after = {"pulled": pulled, "pulled_not_suggested": others}
+    after = {"pulled": pulled, "picked": picked, "pulled_not_suggested": others}
     if block.get("asked"):
         entry = {"at": db.now(), "reply_row": reply_row, "model": block.get("model"),
                  "line_ids": block.get("line_ids"), "asked": block.get("asked"),
@@ -949,8 +958,10 @@ def after_turn(conn, block: dict, looked: list, kept, reply_row=None) -> dict:
                  "results": [dict({k: r.get(k) for k in
                                    ("id", "score", "found_by", "keywords_in_it",
                                     "in_hand", "want", "note")},
-                                  pulled=pulled.get(str(r["id"])))
+                                  pulled=pulled.get(str(r["id"])),
+                                  picked=r["id"] in picked)
                              for r in block.get("results") or []],
+                 "picked": picked,
                  "pulled_not_suggested": [{"id": o["id"], "how": o["how"]} for o in others],
                  "took_s": block.get("took_s"), "missed": block.get("missed")}
         try:
@@ -985,8 +996,14 @@ def summary(block: dict) -> str:
     after = block.get("after")
     if after is not None:
         got = list(after.get("pulled") or {})
-        line += (" · " + home.NAME + " pulled " + ", ".join("#" + i for i in got)
-                 if got else " · " + home.NAME + " pulled none of them")
+        new = [str(i) for i in after.get("picked") or []]
+        if new:
+            line += " · " + home.NAME + " picked up " + ", ".join("#" + i for i in new) + " (not held before)"
+        rest = [i for i in got if i not in new]
+        if rest:
+            line += " · " + home.NAME + " pulled " + ", ".join("#" + i for i in rest)
+        if not got:
+            line += " · " + home.NAME + " pulled none of them"
     return line
 
 
