@@ -5,7 +5,9 @@ the home's, and every call out of the room is stood in front of. What is
 checked: notes are numbered 1, 2, 3 and a number is never given out twice;
 removing keeps the row on disk and takes it out of what the assistant sees;
 votes add one and refuse a note that is gone; turns are counted off its own
-answers, up to and including the one that removed a note; the cap takes a
+answers, up to and including the one that removed a note; each note says
+when it was written, in UTC and in words, and never guesses a time it does
+not have; the cap takes a
 note up to five per cent past it and then locks, and says so in words; the
 owner's cap refuses nonsense; the schema and both kinds of instructions carry
 it; and a whole turn applies its operations after the answer, reports them
@@ -18,6 +20,7 @@ import tempfile
 import unittest
 import zipfile
 from contextlib import ExitStack
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -82,7 +85,43 @@ class NotebookTests(unittest.TestCase):
         note = self.book()["notes"][0]
         self.assertEqual(note["text"], "line one\n  line two")
         self.assertEqual(note["tokens"], db.est_tokens("line one\n  line two"))
-        self.assertEqual(list(note), ["id", "up", "down", "turns", "tokens", "text"])
+        self.assertEqual(list(note), ["id", "up", "down", "turns", "written", "ago",
+                                      "tokens", "text"])
+
+    # -- when ----------------------------------------------------------------
+
+    def test_each_note_says_when_it_was_written_beside_its_turns(self):
+        notebook.apply(self.conn, [op("add", None, "tonight")], self.turn())
+        note = self.book()["notes"][0]
+        row = self.conn.execute("SELECT dt FROM notebook WHERE id = 1").fetchone()
+        self.assertEqual(note["written"], row["dt"])
+        self.assertTrue(note["written"].endswith("+00:00"), note["written"])
+        self.assertEqual(note["ago"], "just now")
+        # An hour back on disk reads as an hour, however many turns came between.
+        then = (datetime.now(timezone.utc) - timedelta(hours=2, minutes=5)).isoformat(
+            timespec="seconds")
+        self.conn.execute("UPDATE notebook SET dt = ? WHERE id = 1", (then,))
+        for _ in range(40):
+            self.turn()
+        note = self.book()["notes"][0]
+        self.assertEqual((note["written"], note["ago"], note["turns"]),
+                         (then, "2 hours ago", 40))
+
+    def test_the_age_is_in_words_and_never_guessed(self):
+        now = datetime(2026, 10, 16, 21, 0, tzinfo=timezone.utc)
+        for written, said in [
+                ("2026-10-16T20:59:30+00:00", "just now"),
+                ("2026-10-16T20:59:00+00:00", "1 minute ago"),
+                ("2026-10-16T20:15:00+00:00", "45 minutes ago"),
+                ("2026-10-16T19:00:00+00:00", "2 hours ago"),
+                ("2026-10-15T20:00:00+00:00", "1 day ago"),
+                ("2026-10-13T21:00:00+00:00", "3 days ago"),
+                ("2026-09-30T21:00:00+00:00", "2 weeks ago"),
+                ("2026-07-01T21:00:00+00:00", "3 months ago"),
+                ("2024-10-01T21:00:00+00:00", "2 years ago"),
+                ("2026-10-16T18:00:00", "3 hours ago"),  # no zone: stored UTC
+                (None, None), ("", None), ("not a time", None)]:
+            self.assertEqual(notebook.ago(written, now), said, written)
 
     def test_removed_stays_on_disk_and_leaves_its_view(self):
         notebook.apply(self.conn, [op("add", None, "keep me"), op("add", None, "drop me")],
@@ -282,8 +321,10 @@ class NotebookTests(unittest.TestCase):
         self.assertEqual(len(ev), 1)
         self.assertEqual(ev[0]["summary"], "added #1 · #1 up · 1 refused")
         prompt = brain.build_prompt(self.conn)
+        written = self.conn.execute("SELECT dt FROM notebook WHERE id = 1").fetchone()[0]
         self.assertEqual(prompt["notebook"]["notes"],
                          [{"id": 1, "up": 1, "down": 0, "turns": 0,
+                           "written": written, "ago": "just now",
                            "tokens": db.est_tokens("the first thing I keep"),
                            "text": "the first thing I keep"}])
         self.assertEqual(prompt["report"]["notebook"], booked["lines"])

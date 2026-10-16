@@ -18,8 +18,10 @@ about what goes in. What the room does keep is the shape:
   it stays behind unless the new one says so in its own words.
 
 Each note also carries how many of its turns it has been kept -- counted off
-its own answers in the store, so the figure cannot drift -- and its size in
-tokens, the same estimate everything else here wears. The whole book has a
+its own answers in the store, so the figure cannot drift -- when it was
+written, and its size in tokens, the same estimate everything else here
+wears. Turns are not time: a note written an hour ago in a busy evening can
+show more turns than a quiet week's, so the time rides beside them. The whole book has a
 cap, the owner's to move under Settings. A note that takes the book past the
 cap by no more than GRACE still goes in; once the book is past it, adding is
 locked until notes are removed or the cap is raised. Refused in words, never
@@ -33,6 +35,7 @@ every turn would cost far more than this block does.
 import json
 import math
 from bisect import bisect_right
+from datetime import datetime, timezone
 
 from . import db
 from . import home
@@ -65,10 +68,11 @@ OP = {
 INSTRUCTIONS = """
 ## `notebook` — my own notes
 
-A few short notes of mine that stay in front of me every turn. What goes in, how, and
+A few short notes of mine, in front of me every turn. What goes in, how, and
 for how long, is mine. The `notebook` block shows how full it is (`used`) and each note
-with its `id`, the `up` and `down` votes I have given it, the `turns` it has been kept
-and its `tokens`. My answer's `notebook` takes operations, every field present:
+with its `id`, my `up`/`down` votes, the `turns` it has been kept, when it was `written`
+(UTC, `ago` in words) and its `tokens`. Turns are not time. My answer's `notebook`
+takes operations, every field present:
 
 - `{"op": "add", "id": null, "text": "..."}` — write one; the room numbers it.
 - `{"op": "remove", "id": 4, "text": null}` — take one out, for good.
@@ -148,6 +152,27 @@ def _turns(conn, notes: list) -> None:
         n["turns"] = max(0, end - start)
 
 
+def ago(written, now=None):
+    """How long ago a note was written, in the words a person would use --
+    or None when its time cannot be read. Never a guess: a time that is not
+    on disk is not made up."""
+    try:
+        then = datetime.fromisoformat(written)
+    except (TypeError, ValueError):
+        return None
+    if then.tzinfo is None:
+        then = then.replace(tzinfo=timezone.utc)
+    secs = ((now or datetime.now(timezone.utc)) - then).total_seconds()
+    if secs < 60:
+        return "just now"
+    for size, unit in ((86400 * 365, "year"), (86400 * 30, "month"),
+                       (86400 * 7, "week"), (86400, "day"), (3600, "hour"),
+                       (60, "minute")):
+        if secs >= size:
+            n = int(secs // size)
+            return str(n) + " " + unit + ("" if n == 1 else "s") + " ago"
+
+
 def notes(conn, removed: bool = False) -> list:
     """The notes in hand, oldest first -- and with `removed`, the ones put
     down as well, for the owner's table and never for the assistant."""
@@ -166,7 +191,8 @@ def _used(conn) -> int:
 
 def for_prompt(conn) -> dict:
     """The block it reads every turn: how full the book is, whether adding
-    is locked, and each note with its votes, turns kept and size."""
+    is locked, and each note with its votes, turns kept, when it was
+    written and size."""
     live = notes(conn)
     used, of = sum(n["tokens"] for n in live), cap()
     out = {"used": _used_line(used, of)}
@@ -174,7 +200,8 @@ def for_prompt(conn) -> dict:
         out["locked"] = ("past the cap: adding waits until I remove notes or "
                          + home.OWNER_NAME + " raises the cap")
     out["notes"] = [{"id": n["id"], "up": n["up"], "down": n["down"],
-                     "turns": n["turns"], "tokens": n["tokens"],
+                     "turns": n["turns"], "written": n["dt"] or None,
+                     "ago": ago(n["dt"]), "tokens": n["tokens"],
                      "text": n["text"]} for n in live]
     return out
 

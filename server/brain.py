@@ -1455,7 +1455,8 @@ def build_prompt(conn, voice_on: bool = False, found=None, woken=None,
         "messages": messages,
         "essences": essences,
         # Its notebook, beside what it keeps: its own short notes, with the
-        # votes it gave each, how many turns each has been kept, and how full
+        # votes it gave each, how many turns each has been kept, when each
+        # was written, and how full
         # the book is against its cap.
         "notebook": _notebook_block(conn),
         "out_of_reach": db.dropped_index(conn, DROPPED_INDEX_LIMIT),
