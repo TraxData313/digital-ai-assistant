@@ -955,6 +955,16 @@ function nativeActionHtml(e, grey) {
   return actHtml("native:" + d._key, failed || d._runFailed ? "files snag" : "files", label, summary, inner, grey);
 }
 
+// A memory card's key is what it searched for, from which lines: the same
+// while the turn is live and once it is saved, so a card opened mid-turn
+// stays open when the reply lands, and the next turn's card does not
+// inherit it by sitting in the same place.
+function recallKey(d, fallback) {
+  const a = d && d.asked;
+  if (!a || !a.essence) return fallback;
+  return "rc:" + (d.line_ids || []).join(",") + ":" + a.essence;
+}
+
 function actFromEvent(e, grey) {
   if (e.detail?._nativeGroup) return nativeActionHtml(e, grey);
   const [label, cls] = ACT[e.kind] || [e.kind, e.kind];
@@ -963,7 +973,8 @@ function actFromEvent(e, grey) {
   const download = e.kind === "native" && e.detail && Number.isInteger(e.detail.request_row)
     ? `<a href="api/native-log?row=${e.detail.request_row}" download="native-turn-${e.detail.request_row}.json">Download run log</a>` : "";
   if (e.kind === "recall" && e.detail) {
-    return actHtml("ev:" + e.id, cls, label, text, recallHtml(e.detail, "ev:" + e.id), grey,
+    const k = recallKey(e.detail, "ev:" + e.id);
+    return actHtml(k, cls, label, text, recallHtml(e.detail, k), grey,
                    recallBadge(e.detail));
   }
   return actHtml("ev:" + e.id, cls, label, text, body(eventDetail(e), mono) + download, grey);
@@ -1488,7 +1499,8 @@ function liveStep(s, key, afterReply) {
     const [label, cls] = LIVE_LABEL[s.kind];
     const mono = s.kind === "files" || s.kind === "shelf" || s.kind === "native";
     if (s.kind === "recall") {
-      return actHtml(key, cls, label, tidySummary(s.text), recallHtml(s.detail, key), false,
+      const k = recallKey(s.detail, key);
+      return actHtml(k, cls, label, tidySummary(s.text), recallHtml(s.detail, k), false,
                      recallBadge(s.detail));
     }
     return actHtml(key, cls, label, tidySummary(s.text),
@@ -1558,7 +1570,13 @@ function renderLive() {
   if (!el) return;
   const busy = progress && progress.busy;
   const broke = !busy && ((progress && progress.error) || failed);
-  if (!busy && !broke) { keepScroll(() => { patchHtml(el, ""); }); return; }
+  if (!busy && !broke) {
+    // The live cards are keyed by their place in the turn; once it is over,
+    // what was open there must not open the next turn's card in that place.
+    for (const k of [...OPEN]) if (k.startsWith("live:")) OPEN.delete(k);
+    keepScroll(() => { patchHtml(el, ""); });
+    return;
+  }
 
   const steps = (progress && progress.steps) || [];
   const kept = steps.findIndex((s) => /^kept \w+ answer as row #/.test(s.text));
