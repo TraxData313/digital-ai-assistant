@@ -1566,6 +1566,24 @@ def build_prompt(conn, voice_on: bool = False, found=None, woken=None,
     return out
 
 
+def _json_or_none(line: str):
+    try:
+        return json.loads(line) if line.startswith("{") else None
+    except json.JSONDecodeError:
+        return None
+
+
+def _result_error(ev: dict) -> str:
+    """Why a failed run failed, in the API's words. Its `subtype` can say
+    "success" on a run the content filter stopped half-way; `result` says
+    what really happened."""
+    said = str(ev.get("result") or "").strip()
+    if said:
+        return said[:300]
+    subtype = ev.get("subtype")
+    return str(subtype) if subtype and subtype != "success" else "no reason given"
+
+
 def _peek_reply(raw: str, fields=("reply", "looking")) -> str:
     """Its reply, pulled out of a JSON answer that is only half written. It is
     the one field worth watching arrive, and waiting for the closing brace to
@@ -1670,7 +1688,7 @@ class _StreamWatch:
             self._tick(force=True)
             if ev.get("is_error"):
                 self.say("the run came back an error: "
-                         + str(ev.get("subtype") or "no reason given"), "snag")
+                         + _result_error(ev), "snag")
             else:
                 self.say("the answer came back whole")
 
@@ -1865,7 +1883,11 @@ def _call_model(system: str, prompt_json: str, model: str = DEFAULT_MODEL,
             raise broke("claude was still going after " + str(CALL_TIMEOUT)
                         + " seconds, so it was stopped")
         tail = "".join(out)[-1500:] + "".join(errs)[-1500:]
-        raise broke(f"claude exited {code}\n{tail}")
+        why = next((_result_error(ev) for ev in map(_json_or_none, reversed(out))
+                    if ev and ev.get("type") == "result" and ev.get("is_error")),
+                   None)
+        raise broke(f"claude exited {code}" + (f": {why}" if why else "")
+                    + f"\n{tail}")
     try:
         answered = _extract_stream("".join(out), expect=expect)
         # Which mind, in the room's own spelling, on every answer from
